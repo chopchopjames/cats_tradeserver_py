@@ -1,0 +1,351 @@
+// Copyright 2016.
+// All rights reserved.
+
+syntax = "proto3";
+
+
+enum Side {
+    MD_UNKNOWN = 0;
+    MD_BUY = 1;
+    MD_SELL = 2;
+    MD_BORROW = 3;
+    MD_LEND = 4;
+}
+
+
+message Bar {
+    string datetime = 1;         //format 20170701 01:01:01.002222+0800
+    string instrument_id = 2;
+    string instrument_name = 3;
+    string exchange_id = 4;        //2 bytes
+
+    double open = 5;                        //.2f, int64 is enough for price
+    double high = 6;
+    double low = 7;
+    double close = 8;
+    double volume = 9;
+    double amount = 10;                 //maximum value of int64 in python is 1.7976931348623157e+308,enough
+
+    double bought_amount = 11;
+    double sold_amount = 12;
+    double open_interest = 15;
+
+    int32 frequency = 16;
+
+    double upper_limit = 17;
+    double lower_limit = 18;
+    double timestamp = 19;
+    string ticker = 20;
+
+    PredRet pred_ret = 201;
+}
+
+
+message Tick {
+    string datetime_iso8601 = 1;         //format iso8601
+    string instrument_id = 2;
+    string instrument_name = 3;
+    string exchange_id = 4;        //
+    string ticker = 20;
+
+    double new_price = 5;
+    double open = 6;                        //.2f, int64 is enough for price
+    double high = 7;
+    double low = 8;
+    double close = 9;
+    double volume = 10;
+    double amount = 11;                 //maximum value of int64 in python is 1.7976931348623157e+308,enough
+    double bought_amount = 12;
+    double sold_amount = 13;
+    double preclose = 15;
+    string id = 16;
+    double bought_qty = 17;
+    double sold_qty = 18;
+    double vwap_buy = 19;
+    double vwap_sell = 21;
+    int32 withdraw_buy_number = 22; //买入撤单笔数
+    int32 withdraw_sell_number = 23;
+    double withdraw_buy_money = 24; //买入撤单金额
+    double withdraw_sell_money = 25;
+    double withdraw_buy_qty = 26; //买入撤单数量
+    double withdraw_sell_qty = 27;
+    int32 total_buy_number = 28; //买入总比数
+    int32 total_sell_number = 29;
+    double buy_trade_max_duration = 30; //买入委托成交最大等待时间
+    double sell_trade_max_duration = 31;
+    int32 num_buy_orders = 32; //买方委托价位数
+    int32 num_sell_orders = 33;
+    double norminal_price = 34; //按盘价
+    int32 short_sell_shares_traded = 36; //抛空数量
+    double short_sell_turnover = 37; //抛空金额
+    double ref_price = 38;
+    double complex_event_start_time = 39; //冷静期开始时间
+    double complex_event_end_time = 40; //冷静期结束时间
+    string channel_no = 41; //交易所原始频道代码
+    double iopv = 42; //基金净值
+    double pre_iopv = 43; //昨日净值
+    int32 purchase_number = 44; //申购笔数
+    int32 purchase_qty = 45; //申购数量
+    double purchase_money = 46; //申购金额
+    int32 redemption_number = 47;
+    double redemption_qty = 48;
+    double redemption_money = 49;
+    int32 number_of_trades = 50; //成交笔数
+
+    double open_interest = 58;
+    double upper_limit = 59;
+    double lower_limit = 60;
+    double pre_open_interest = 61;
+    double vwap = 62;
+    double pre_close_price = 63;
+    double pre_settlement_price = 64;
+    double pre_delta = 65;
+    double curr_delta = 66;
+    double settlement_price = 67;
+
+    repeated double aps = 101;
+    repeated double bps = 102;
+    repeated double avs = 103;
+    repeated double bvs = 104;
+    repeated double bv1_orders = 106;
+    repeated double av1_orders = 107;
+    double timestamp = 105;
+
+    // option
+    double delta = 110;
+    double gamma = 111;
+    double vega = 112;
+    double theta = 113;
+    double vanna = 114;
+    double volga = 115;
+    double implied_volatility = 116;
+    double underlying_price = 117;
+    double implied_underlying_price = 118;
+
+    PredRet pred_ret = 201;
+
+}
+
+message Depth {
+    double timestamp = 1;
+    repeated double aps = 2;
+    repeated double bps = 3;
+    repeated double avs = 4;
+    repeated double bvs = 5;
+    repeated string bid_ids = 6;
+    repeated string ask_ids = 7;
+    repeated double bv1_orders = 8;
+    repeated double av1_orders = 9;
+    repeated int32 bid_nums = 10;
+    repeated int32 ask_nums = 11;
+    repeated int32 bid_force_closures = 12; // 爆仓单数量
+    repeated int32 ask_force_closures = 13; // 爆仓单数量
+    double upper_limit = 14;
+    double lower_limit = 15;
+    string ticker = 20;
+
+}
+
+
+message TradeDetail {
+    string id = 1;
+    double price = 2;
+    double volume = 3;
+    double timestamp = 4;
+    string ticker = 20;
+
+    enum Type {
+        BID = 0;
+        ASK = 1;
+    }
+    Type type = 7;
+}
+
+
+
+message MDTrade {
+    string exec_id = 1;
+    double trade_price = 2;
+    double trade_quantity = 3;
+    double transact_time = 4;
+    string ticker = 5;
+
+    enum ExecType {
+        FILL = 0; //成交
+        CANCEL = 1; //撤单
+        IOC_AUTO_CANCEL = 2; //"即时成交剩余撤销委托"未能成交部分撤单
+        ETF_CREATE_OR_REDEEM_FILL = 3; //ETF申购/赎回成功回报记录
+        ETF_CREATE_OR_REDEEM_CANCEL = 4; //ETF申购/赎回撤单回报
+        IOC5_AUTO_CANCEL = 5; //“最优五档即时成交剩余撤销委托”未能成交部分的自动撤单
+        FOK_AUTO_CANCEL = 6; //“全额成交或撤销委托”未能成交时的自动撤单
+        BEST_OFFER_AUTO_CANCEL = 7; //对手方最优价格委托的撤单回报记录
+        MARKET_IF_TOUCHED_AUTO_CANCEL = 8; //本方最优价格委托的撤单回报记录
+        ETF_CASH_FILL = 9; //ETF基金申购/赎回成功允许/必须现金替代明细回报记录
+    }
+    ExecType exec_type = 7;
+
+    Side side = 8;
+    string channel_no = 9;
+}
+
+
+message MDOrder {
+    enum OrdType {
+        MARKET = 0;
+        LIMIT = 1;
+        MARKET_IF_TOUCHED = 2;
+        UNKNOWN = 100;
+    }
+
+    string ticker = 1;
+    double transact_time = 2;
+    string order_id = 3;
+    OrdType order_type = 4;
+    Side side = 5;
+    double order_price = 6;
+    double order_qty = 7;
+    string channel_no = 8; // 交易所原始频道代码， 华泰insight
+}
+
+
+// ETF预估净值
+message Iopv {
+    double quote_time = 1; //
+    string ticker = 2;
+    double update_time = 3;
+
+    double new_price = 5;
+    double bp1 = 6; // 买一价净值（赎回净值）
+    double bp1_adj = 7;
+    double ap1 = 11; // 卖一价净值（申购净值）
+    double ap1_adj = 12;
+    double preclose = 16;
+    int64  min_exchange_unit = 17;
+
+    int64 created_bskt_num = 50;
+    int64 created_qty = 52;
+    int64 created_count = 54;
+    int64 redeemed_qty = 53;
+    int64 redeemed_bskt_num = 51;
+    int64 redeemed_count = 55;
+    int64 create_limit = 56;
+    int64 redeem_limit = 57;
+
+    Tick etf_quote = 13;
+
+    message StockAdjust {
+        string stock_ticker = 1;
+        double adjust = 2;
+    }
+
+    repeated StockAdjust limit_up_adjust_detail = 20;
+    repeated StockAdjust limit_down_adjust_detail = 21;
+    repeated StockAdjust must_halt_adjust_detail = 22;
+    repeated StockAdjust non_must_halt_adjust_detail = 23;
+
+    double limit_up_adjust = 101; // 非必须涨停点数
+    double limit_down_adjust = 102; // 非必须跌停点数
+    double non_must_halt_adjust = 103; // 非必须停牌点数
+    double must_halt_adjust = 104; // 必须非停牌点数
+
+    // pred
+    double pred_ret_2 = 110;
+    double pred_ret_5 = 111;
+    double pred_ret_18 = 112;
+    double pred_ret_vwap = 113;
+
+    double pred_iopvgain_create = 114;
+    double pred_iopvgain_redeem = 115;
+    double pred_iopvgain_create_allowonly = 116;
+    double pred_iopvgain_redeem_allowonly = 117;
+
+    // risk free signal
+    message RiskFreeSignal {
+        int64 est_profit = 201;
+        double bskt_num = 202;
+    }
+    RiskFreeSignal create_and_sell_ap1 = 120;
+    RiskFreeSignal create_and_sell_bp1 = 121;
+    RiskFreeSignal redeem_and_buy_ap1 = 122;
+    RiskFreeSignal redeem_and_buy_bp1 = 123;
+
+    // 预估现金差额
+    double est_cash_component = 124;
+    double est_cash_component_dif = 125;
+    double est_slippage_create = 126;
+    double est_slippage_redeem = 127;
+
+    // 申赎净值
+    double iopv_create = 128;
+    double iopv_redeem = 129;
+}
+
+
+message PredRet {
+    message PredValue {
+        int32 fwd_period = 1;
+        float pred_ret = 2;
+    }
+    repeated PredValue pred_values = 1;
+    double sending_time = 2;
+    double receiving_time = 3;
+}
+
+
+message Message {
+    enum DataType {
+        TICK = 0;
+        BAR = 1;
+        IOPV = 2;
+        MD_TRADE = 4;
+        MD_ORDER = 5;
+        DEPTH = 6;
+        SNAPSHOT = 7;
+    }
+
+    enum SecurityType {
+        INDEX = 0;
+        STOCK = 1;
+        FUND = 2;
+        BOND = 3;
+        REPO = 4;
+        WARRANT = 5;
+        OPTION = 6;
+        FOREX = 7;
+        RATE = 8;
+        NMETAL = 9;
+        SPOT = 10;
+        FUTURE = 11;
+        OTHER = 100;
+    }
+
+    enum TradingSession {
+        PRE_TRADING = 0; // 开盘前
+        OPENING = 1; //开盘集合竞价
+        AFTER_OPENING = 2; //开盘集合竞价阶段结束到, 连续竞价阶段开始之前
+        TRADING = 3; //连续竞价
+        NOON_BREAK = 4; //中午休市
+        CLOSING = 5; //收盘集合竞价
+        CLOSED = 6; //闭市
+        AFTER_HOUR_TRADING = 7; // 盘后交易
+        HALT = 8; //停牌
+        UNSCHEDULED_INTRADAY_ACTION = 9; //波动性中断
+    }
+
+    DataType data_type = 1;
+    double sending_time = 2;
+    SecurityType security_type = 3;
+    TradingSession trading_session = 4;
+    double receiving_time = 5;
+
+    oneof body {
+        Tick tick_body = 102; //股票，不算是截面数据，有汇总的内容
+        Bar bar_body = 103;
+        Iopv iopv_body = 104;
+        TradeDetail trade_body = 106;
+        Depth depth_body = 107;
+        Tick snapshot_body = 108; //纯截面数据
+        MDOrder md_order = 109;
+        MDTrade md_trade = 110;
+    }
+}

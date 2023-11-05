@@ -1,0 +1,526 @@
+// Copyright 2016.
+// All rights reserved.
+
+syntax = "proto3";
+
+enum OrderAction {
+  BUY = 0;
+  BUY_TO_COVER = 1;
+  SELL = 2;
+  SELL_SHORT = 3;
+  ETF_CREATE = 4;
+  ETF_REDEEM = 5;
+
+  AUTO_BUY = 6;
+  AUTO_SELL = 7;
+
+  MARGIN_BUY = 8;
+  SELL_AND_PAYBACK = 9;
+}
+
+
+enum OrderType{
+  MARKET = 0;
+  LIMIT = 1;
+  STOP = 2;
+  STOP_LIMIT = 3;
+}
+
+
+enum CtpOffsetFlag{
+  // CTP专用
+  AUTO = 0;
+  OPEN = 1;
+  CLOSE = 2;
+}
+
+
+enum OrderState
+{
+  INITIAL = 0;
+  SUBMITTED = 1;
+  ACCEPTED = 2;
+  TO_BE_CANCELED = 3;
+  CANCELING = 4;
+  PARTIALLY_FILLED = 5;
+
+  CANCELED = 101;
+  FILLED = 103;
+}
+
+
+message HeartBeat
+{
+  string trader_id = 1; // 策略id
+}
+
+message RegisterStrategyReq
+{
+  string trader_id = 1; // 策略id
+}
+
+
+message OrderReq
+{
+  enum Purpose{
+    INIT = 0;
+    HEDGE = 1;
+  }
+  Purpose purpose = 1;
+
+  enum PriceType {
+    PRICE = 0;
+    IMPLIED_VOL = 1;
+  }
+
+  PriceType price_type = 2;
+
+  OrderType type = 3;
+  OrderAction action = 4;
+  double quantity = 5;
+  double limit_price = 6;
+  double stop_price = 7;
+  string datetime = 10;
+  string ticker = 11;
+
+  double timestamp = 12;  //  订单发送时间
+  double quote_timestamp = 16;  //  订单触发行情时间，如有
+  double create_timestamp = 17;  //  订单生成时间
+  int32 expire = 18;
+
+  int64 min_exchange_unit = 19; // ETF req 需要
+
+  bool pending_only = 22; // 只挂单
+  bool auto_close = 23; // 自动开平
+
+  CtpOffsetFlag ctp_offset_flag = 25;
+
+  enum Special {
+    TO = 0; //timed optimize, TO(N), order price is set to one tick better than current order book,
+    //cancel and resend at counter price in N seconds.
+    TOK = 1; // timed optimize or kill, TOK(N), like TO orders, but cancel order after N seconds.
+  }
+  Special special = 20;
+
+  string msg = 101;
+  string batch_id = 102;
+  string extra = 103;
+}
+
+
+message BatchOrderReq
+{
+  repeated ReqMessage order_reqs = 1;
+  string batch_id = 2;
+}
+
+
+
+message CancelReq
+{
+  string exchange_order_ref = 1;
+  string order_req_id=2;
+  string msg = 5;
+}
+
+
+message BatchCancelReq
+{
+  repeated CancelReq cancel_req = 1;
+}
+
+
+message ReqMessage
+{
+  enum Head
+  {
+    RegisterStrategy = 0;  // 注册策略，用不上
+    UnRegisterStrategy = 1;
+    LOGIN = 2;  // 先不用
+    LOGOUT = 3;  // 先不用
+    INSERT_ORDER = 4;
+    ALTER_ORDER = 5;
+    QUERY_ORDER = 6;
+    QUERY_TRADE = 7;
+    QUERY_POSITION = 8;
+    QUERY_ACCOUNT = 9;
+    HEART_BEAT = 10;
+    QUERY_INSTRUMENT = 11;
+    INSERT_BATCH_ORDER = 12;
+    BATCH_CANCEL = 15;
+  }
+
+  Head head = 1;
+  oneof body
+  {
+    HeartBeat heart_beat = 2;
+    RegisterStrategyReq register = 3;
+    OrderReq insert_order = 4;
+    CancelReq cancel_order = 5;
+    BatchOrderReq batch_order = 8;
+    BatchCancelReq batch_cancel = 10;
+  }
+  double timestamp = 20;
+  string req_id = 21;
+  string logic_id = 22;
+
+}
+
+
+message OrderResp
+{
+  string order_req_id = 1;
+  string exchange_order_ref = 2;
+  OrderState state = 3;
+  string error = 4;
+  string account_name = 5;
+  OrderAction action = 10;
+
+  double update_timestamp = 7;
+  string msg = 8;
+  string batch_id = 9;
+}
+
+
+message Trade
+{
+  string order_req_id = 1;
+  string ticker = 2;
+  double price = 3;
+  double quantity = 4;
+  OrderAction action = 5;
+  OrderType type = 6;
+  string exchange_order_ref = 7;
+  double timestamp = 9;  // '00:00:00.000' # 成交时间
+  double commission = 10;
+  string batch_id = 11;
+
+  string exchange_trade_ref = 15;
+  string account_name = 16;
+
+  string msg = 21;
+
+  bool if_last = 30;
+}
+
+
+message OrderStatusResp {
+  enum State {
+    queueing = 0;
+    filled = 1;
+    canceled = 2;
+
+    unknown = 100;
+  }
+
+  string order_req_id = 1;
+  string exchange_order_ref = 2;
+  State state = 3;
+  string ticker = 4;
+
+  float order_qty = 11;
+  float filled_qty = 12;
+  float remaining_qty = 13;
+
+  double update_timestamp = 7;
+  string msg = 8;
+}
+
+
+message EtfConvertComponentResp {
+
+  OrderAction action = 1;
+  string etf_ticker = 2;
+  string component_ticker = 3;
+  int32 quantity = 4;
+  string exchange_ref = 5;
+}
+
+
+message QryAccountResp {
+  string account_id = 1;  // 账户代码
+  string account_name = 2; // 账户名称
+  double update_timestamp = 3;  // 更新时间
+  double withdraw = 4; // 可取金额
+  double frozen_margin = 5;  // 冻结保证金
+  double frozen_cash = 6;  // 冻结金额
+  double margin = 7;  // 杠杆率
+  double initial_margin = 17;  // 开仓保证金
+  double maintenance_margin = 18;  // 维持保证金
+  double commission = 8;  // 手续费
+  double close_profit = 9;  // 平仓利润
+  double position_profit = 10;  // 持仓利润
+  double balance = 11;  // 总资产
+  double equity = 16;  // 净资产
+  double cash_available = 12; // 可用现金
+  double cash_total = 15;  // 总现金
+  double cash_forriskasset = 22;  // 买担保品可用现金
+  double cash_forcovershort = 23;  // 买券可还可用现金
+  double cash_credit = 24;  //  融资余额
+  double withdraw_quota = 13;  // 可取金额
+  double asset_market_value = 14;  // 持仓市值
+  double deposit = 20;
+  string currency = 21;
+}
+
+
+message QryTradeResp {
+  message Trade
+  {
+    string order_req_id = 1;
+    string ticker = 2;
+    double price = 3;
+    double quantity = 4;
+    OrderAction action = 5;
+    OrderType type = 6;
+    string exchange_order_ref = 7;
+    double timestamp = 9;  // '00:00:00.000' # 成交时间
+    double commission = 10;
+    string batch_id = 11;
+
+    string exchange_trade_ref = 15;
+    string account_name = 16;
+
+    string msg = 21;
+
+    bool if_last = 30;
+  }
+  string account_name = 1;
+  string account_id = 3;
+  repeated Trade trade = 4;
+}
+
+
+message QryPositionResp
+{
+  string account_name = 1;
+  string account_id = 3;
+
+  message Position{
+    string ticker = 1; // 代码
+    double long_volume = 2;  // 多头持仓
+    double long_avg_cost = 3;  // 多头持仓成本
+    double long_available = 4;  // 多头可用
+    double long_margin = 5;  // 多头保证金
+
+    double short_avg_cost = 6;  // 空头持仓成本
+    double short_volume = 7;  // 空头持仓
+    double short_available = 8;  // 空头可用
+    double short_margin = 9;  // 空头保证金
+    double short_sellable = 15; // 融券可卖
+
+    double long_opened_today = 10; // 今日多头开仓数量
+    double short_opened_today = 11;  // 今日空头开仓数量
+
+    double long_market_value = 12;  // 多头市值
+    double short_market_value = 13;  // 空头市值
+
+    double force_liquidation_price = 14;  // 强平价格
+
+    double redeemable = 28; //etf，可赎回数量
+
+    string msg = 101;  // 注释
+  }
+  repeated Position positions = 2;
+  double update_timestamp = 19;  // 持仓更新时间
+}
+
+
+message MarginContractHoldingDetail
+{
+  message MarginContractHolding{
+      string opening_date = 1;
+      string open_serial_num = 2;
+      string market_id = 3;
+      double opening_amt = 4;
+      double trading_amt = 5;
+      double opening_qty = 6;
+      double opening_price = 7;
+      string security_id = 8;
+      double repayment_amt = 9;
+      double repayment_qty = 10;
+
+      string expiration_date = 11;
+      int32 rollover_number = 12;
+      double deposit_ration = 13;
+      string associate_serialnum = 14;
+      string associate_date = 15;
+      double unsettled_interest = 16;
+      double unsettled_default_interest = 17;
+
+      string ticker = 100;
+  }
+  repeated MarginContractHolding margin_contract_holdings = 1;
+}
+
+
+message QryOrderResp
+{
+
+  string account_name = 2;
+  double update_timestamp = 4;  // 订单更新时间
+  string account_id = 5;
+
+  message PendingOrder{
+    string ticker = 2 ;
+    OrderType type = 3;
+    OrderAction action = 4;
+    double quantity = 5;
+    double limit_price = 6;
+    double stop_price = 7;
+    string order_req_id = 8;
+    string exchange_order_ref = 9;
+
+    double target_iv = 16;  // only for option
+    bool pending_only = 17; // 只挂单
+    bool auto_close = 18; // 自动开平
+
+    double created_timestamp = 13;
+
+    double filled_quantity=15;
+    double expire = 21;
+  }
+  repeated PendingOrder pending_order = 3;
+
+}
+
+
+message RegisterStrategyResp
+{
+  enum Result {
+    OK = 0;
+    NOK = 1;
+  }
+  Result result =1; // 注册是否成功
+  string reason = 2; // 失败原因
+}
+
+
+message QryInstrumentResp
+{
+  message Instrument {
+    string ticker = 1;
+    bool is_trading = 3;
+    string expire_date = 4;
+    double price_tick = 5;
+    double max_market_order_volume = 6;
+    double min_market_order_volume = 7;
+    double max_limit_order_volume = 8;
+    double min_limit_order_volume = 9;
+    string position_date_type = 10;
+    string position_type = 11;
+    double volume_multiple = 12;
+    double underlying_multiple = 13;
+    string product_class = 14;
+    string product_id = 16;
+    double trade_unit = 17;
+    double contract_size = 18;
+    double maker_fee = 19;
+    double taker_fee = 20;
+    string type = 21;
+    double volume_precision = 22;
+    double quote_precision = 23;
+    double min_fee = 24;
+  }
+  repeated Instrument instrument = 1;
+}
+
+
+message RespMessage
+{
+  enum Head
+  {
+    ON_START = 0;  // 先不用
+    ON_LOGIN = 1;  // 先不用
+    ON_LOGOUT = 2;  // 先不用
+    ON_TRADE = 3;
+    ON_ORDER_ACTION = 4;
+    ON_QUERY_ORDER = 5;
+    ON_QUERY_POSITION = 7;
+    ON_QUERY_ACCOUNT = 8;
+    ON_QUERY_INSTRUMENT = 9;
+    ON_QUERY_TRADE = 10;
+    ETF_CONVERT_COMPONENT = 11;
+    ON_ORDER_FILLED_RESP = 12;
+
+    ON_MARGIN_CONTRACT_HOLDING_DETAIL = 13;
+
+    HEART_BETA = 99;
+
+    ON_STRATEGY_REG = 100;
+    ON_ERROR = 101;
+  }
+
+  Head head = 1;
+  oneof body
+  {
+    Trade trade = 2;
+    OrderResp order_resp = 3;
+    QryAccountResp account_bal = 4;
+    QryPositionResp position = 5;
+    QryOrderResp qry_order_resp = 6;
+    QryInstrumentResp instrument = 7;
+    EtfConvertComponentResp etf_component = 9;
+    QryTradeResp qry_trade_resp = 10;
+    OrderStatusResp order_status_resp = 11;
+
+    MarginContractHoldingDetail margin_contract_holding_detail = 13;
+
+    RegisterStrategyResp strategy_reg = 100;
+    Error error = 101;
+  }
+
+  double timestamp = 500;  // 发送时间
+  string resp_id = 501;
+  string hostname = 502;
+  string req_id = 503;
+}
+
+
+
+message Error
+{
+  enum ErrorType
+  {
+    query_too_fast = 0;
+    auth_failed = 1;
+    order_not_exist = 2;
+    insufficient_fund = 3;
+    insufficient_qty = 8;
+    qty_too_low = 4;
+    qty_too_high = 5;
+    price_too_low = 6;
+    price_too_high = 7;
+    invalid_type = 9;
+    insert_order_too_fast = 10;
+    cancel_order_too_fast = 11;
+    duplicate_custom_orderid = 12;
+    invalid_orderid = 13;
+    duplicate_orderid = 14;
+    invalid_symbol = 15;
+    instrument_do_not_match = 16;
+    instrument_expired = 17;
+    instrument_has_no_market_price = 18;
+    accounts_do_not_match = 19;
+    invalid_account = 20;
+    account_suspended = 21;
+    price_excess_limit = 22;
+    permission_denied = 23;
+    invalid_order = 25;
+    cancel_pending = 26;
+    request_timeout = 27;
+    excess_daily_quota = 28;
+
+    unknown = 100;
+  }
+
+  ErrorType type = 1;
+  string msg = 2;
+  string order_req_id = 3;
+  string exchange_order_ref = 4;
+  string account_name = 5;
+}
+
+
+
+
