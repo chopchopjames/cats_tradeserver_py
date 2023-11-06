@@ -119,7 +119,7 @@ class TradeRecorder:
         if self.__resp_redis:
             trade_redis = self.__redis.getTradeConn()
 
-            for doc in self.__req_redis:
+            for doc in self.__resp_redis:
                 key = f"RESP|||{doc['hostname']}|||{datetime.now().strftime('%Y%m%d')}"
                 await trade_redis.rpush(key, json.dumps(doc, default=myconverter))
                 await trade_redis.expire(key, KEY_EXPIRE)
@@ -133,12 +133,12 @@ class TradeRecorder:
         self.__task_h.addCoroutineTask(self.monitorMsg())
 
         self.__task_h.runPeriodicAsyncJob(
-            interval=5,
+            interval=3,
             task_func=self.updateReqRespToRedis,
         )
 
         self.__task_h.runPeriodicAsyncJob(
-            interval=30,
+            interval=10,
             task_func=self.updateReqRespToMongo
         )
 
