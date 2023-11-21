@@ -25,7 +25,7 @@ from xtrade_essential.utils.errors import *
 from xtrade_essential.utils.taskhandler import async_task
 from xtrade_essential.proto import trade_pb2
 from xtrade_essential.xlib import protobuf_to_dict
-from xtrade_essential.xlib import logger
+from xtrade_essential.xlib.logger import getFileLogger
 
 
 class AsyncBaseTradeServer(object):
@@ -49,11 +49,11 @@ class AsyncBaseTradeServer(object):
         self.__account_holding_update_time = datetime(1992, 7, 23)
 
         self.__hostname = hostname
-        self.__logger = logger.getFileLogger(name='hostname: {}'.format(hostname),
-                                             level='INFO',
-                                             log_dir='logs',
-                                             log_file=f"{hostname}_{datetime.now().strftime('%Y%m%d%H%M%S')}.log"
-                                             )
+        self.__logger = getFileLogger(name=hostname,
+                                      level='INFO',
+                                      log_dir='./logs',
+                                      log_file=f"{hostname}_{datetime.now().strftime('%Y%m%d%H%M%S')}.log"
+                                      )
 
         self.__async_task_h = async_task.TaskHandler()
 
@@ -409,7 +409,6 @@ class AsyncBaseTradeServer(object):
 
             order_list.append(order)
 
-        print(batch_id, order_list)
         self.getTaskHandler().addCoroutineTask(self.sendOrdersInBatch(batch_id, order_list))
 
     def onEtfConvertReq(self, etf_convert: EtfConvertRequest):
