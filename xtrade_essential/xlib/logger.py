@@ -54,22 +54,15 @@ def getFileLogger(name=None, level=logging.INFO, log_dir=None, log_file=None):
     if log_dir is not None and not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
-    global rootLoggerInitialized
-    with initLock:
-        if not rootLoggerInitialized:
-            logger = logging.getLogger(name)
-            logger.setLevel(level)
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
 
-            filename = os.path.join(log_dir, log_file)
-            file_handler = logging.FileHandler(filename)  # 创建一个文件处理器实例
-            file_handler.setLevel(logging.INFO)  # 设置文件处理器的日志记录级别
-            formatter = logging.Formatter(format)  # 创建一个格式器实例
-            file_handler.setFormatter(formatter)  # 将格式器设置给文件处理器
-            logger.addHandler(file_handler)
+    filename = os.path.join(log_dir, log_file)
+    file_handler = logging.FileHandler(filename)  # 创建一个文件处理器实例
+    file_handler.setLevel(level)  # 设置文件处理器的日志记录级别
+    formatter = logging.Formatter(format)  # 创建一个格式器实例
+    file_handler.setFormatter(formatter)  # 将格式器设置给文件处理器
+    logger.addHandler(file_handler)
 
-            rootLoggerInitialized = True
-
-            return logger
-
-    return logging.getLogger(name)
+    return logger
 

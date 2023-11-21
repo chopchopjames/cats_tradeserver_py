@@ -101,10 +101,11 @@ class TraderServer(AsyncBaseTradeServer):
         order_update_df['ORD_NO'] = order_update_df['ORD_NO'].astype(str)
 
         for doc in order_update_df.itertuples():
+            self.getLogger().info(doc)
             # 先看是不是ETF申赎
             etf_convert_req = self.getActEtfConvertByCustId(getattr(doc, 'CLIENT_ID'))
             if etf_convert_req is not None:
-                if getattr(doc, "ORD_STATUS") == '2':
+                if getattr(doc, "ORD_STATUS") == '2' or getattr(doc, "ORD_STATUS") == '0':
                     self.onEtfConvertResp(etf_convert_req)
                     continue
 
@@ -121,14 +122,18 @@ class TraderServer(AsyncBaseTradeServer):
                         strategy_order_ref=order.getId(),
                         accepted_time=parseDatetimeStr(getattr(doc, 'ORD_TIME')),
                     )
+                    continue
 
             elif getattr(doc, "ORD_STATUS") == "4":
+                # 全部撤单
                 self.onOrderCanceledResp(
                     order=order,
                     canceled_time=parseDatetimeStr(getattr(doc, 'ORD_TIME')),
                 )
+                continue
 
-            elif getattr(doc, "ORD_STATUS") == "2":
+            elif getattr(doc, "ORD_STATUS") == "1":
+                # 部分成交
                 self.onTrade(
                     ticker=order.getTicker(),
                     price=float(getattr(doc, 'AVG_PX')),
@@ -139,13 +144,37 @@ class TraderServer(AsyncBaseTradeServer):
                     exchange_order_ref=order.getExchangeId(),
                     strategy_order_ref=order.getId(),
                 )
+                continue
 
-            elif getattr(doc, "ORD_STATUS") == "5":
+            elif getattr(doc, "ORD_STATUS") == "2":
+                # 全部成交
+                self.onTrade(
+                    ticker=order.getTicker(),
+                    price=float(getattr(doc, 'AVG_PX')),
+                    quantity=int(order.getRemaining()),
+                    commission=0,
+                    dateTime=parseDatetimeStr(f"{getattr(doc, 'ORD_TIME')}"),
+                    exchange_trade_ref=order.getReqId() + f'{len(order.getAllExcutionInfo())}',
+                    exchange_order_ref=order.getExchangeId(),
+                    strategy_order_ref=order.getId(),
+                )
+                continue
+
+            elif getattr(doc, "ORD_STATUS") == "3":
+                # 部分撤单
+                self.onOrderCanceledResp(
+                    order=order,
+                    canceled_time=parseDatetimeStr(getattr(doc, 'ORD_TIME')),
+                )
+                continue
+
+            elif getattr(doc, "ORD_STATUS") == "5" or getattr(doc, "ORD_STATUS") == "6":
                 self.onError(
                     type_=trade_errors.InvalidOrder.PROTO_CODE,
                     strategy_order_ref=order.getId(),
                     msg=getattr(doc, 'ERR_MSG'),
                 )
+                continue
 
     async def handleActOrderRes(self, data):
         actorder_df = pd.DataFrame(data)
