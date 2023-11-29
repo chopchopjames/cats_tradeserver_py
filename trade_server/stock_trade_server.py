@@ -8,6 +8,7 @@ import os
 import pytz
 import time
 import typing
+import asyncio
 import orjson as json
 import pandas as pd
 
@@ -29,10 +30,11 @@ class MsgAction:
 
 
 class TraderServer(AsyncBaseTradeServer):
-    def __init__(self,):
+    def __init__(self, hostname):
         AsyncBaseTradeServer.__init__(self, hostname=os.environ["TRADE_HOSTNAME"])
         self.getLogger().setLevel(os.environ.get('LOG_LEVEL', 'INFO').upper())
 
+        self.__hostname = hostname
         self.__date_str = datetime.now().strftime('%Y%m%d')
         self.__req_id = 0
         self.__start_time = datetime.now()
@@ -105,7 +107,7 @@ class TraderServer(AsyncBaseTradeServer):
             # 先看是不是ETF申赎
             etf_convert_req = self.getActEtfConvertByCustId(getattr(doc, 'CLIENT_ID'))
             if etf_convert_req is not None:
-                if getattr(doc, "ORD_STATUS") == '2' or getattr(doc, "ORD_STATUS") == '0':
+                if getattr(doc, "ORD_STATUS") == '2':
                     self.onEtfConvertResp(etf_convert_req)
                     continue
 
@@ -134,15 +136,12 @@ class TraderServer(AsyncBaseTradeServer):
 
             elif getattr(doc, "ORD_STATUS") == "1":
                 # 部分成交
-                self.onTrade(
-                    ticker=order.getTicker(),
-                    price=float(getattr(doc, 'AVG_PX')),
-                    quantity=int(getattr(doc, 'FILLED_QTY')),
-                    commission=0,
+                self.onExecInfo(
+                    avg_fill_price=float(getattr(doc, 'AVG_PX')),
+                    fill_quantity=int(getattr(doc, 'FILLED_QTY')),
                     dateTime=parseDatetimeStr(f"{getattr(doc, 'ORD_TIME')}"),
-                    exchange_trade_ref=order.getReqId() + f'{len(order.getAllExcutionInfo())}',
                     exchange_order_ref=order.getExchangeId(),
-                    strategy_order_ref=order.getId(),
+                    cost=0,
                 )
                 continue
 
@@ -222,9 +221,9 @@ class TraderServer(AsyncBaseTradeServer):
             except Exception as e:
                 self.getLogger().info(f"failed msg: {msg_str.decode()}")
 
-                # TODO
-                self.stop()
-                raise e
+                # # TODO
+                # self.stop()
+                # raise e
 
     # TradeServer func start
     def getInstrumentTrait(self, ticker):
@@ -288,8 +287,8 @@ class TraderServer(AsyncBaseTradeServer):
         :param order:
         :return:
         """
-
-        await self._cancelOrderReq([order.getExchangeId()])
+        if order.getExchangeId() is not None:
+            await self._cancelOrderReq([order.getExchangeId()])
 
     async def sendEtfConvert(self, etf_convert: EtfConvertRequest):
         """
@@ -352,13 +351,25 @@ class TraderServer(AsyncBaseTradeServer):
         return True
 
     def run_forever(self):
+        from common.async_http import HttpClient
+        client = HttpClient()
+        config = asyncio.run(client.getTradeAccount(hostname=self.__hostname))
+        login_info = json.loads(config['login_info'])
+
+        self.__accountid = str(login_info["account_id"])
+        self.__connector_pub_ch = f"{login_info['connector_pub_ch']}|{self.__accountid}"
+        self.__connector_sub_ch = login_info["connector_sub_ch"]
+
+        self.getLogger().info(f"pub: {self.__connector_pub_ch}, sub: {self.__connector_sub_ch}")
+
         self.addCoroutineTask(self.monitorConnectorResp())
 
         super().run_forever()
 
 
 if __name__ == '__main__':
-    demo = TraderServer()
+    from .margin_trade_server import parse_args
+    demo = TraderServer(*parse_args())
 
     demo.run_forever()
 

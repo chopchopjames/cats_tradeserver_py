@@ -25,7 +25,7 @@ from xtrade_essential.utils.errors import *
 from xtrade_essential.utils.taskhandler import async_task
 from xtrade_essential.proto import trade_pb2
 from xtrade_essential.xlib import protobuf_to_dict
-from xtrade_essential.xlib.logger import getFileLogger
+from xtrade_essential.xlib import logger
 
 
 class AsyncBaseTradeServer(object):
@@ -49,11 +49,9 @@ class AsyncBaseTradeServer(object):
         self.__account_holding_update_time = datetime(1992, 7, 23)
 
         self.__hostname = hostname
-        self.__logger = getFileLogger(name=hostname,
-                                      level='INFO',
-                                      log_dir='./logs',
-                                      log_file=f"{hostname}_{datetime.now().strftime('%Y%m%d%H%M%S')}.log"
-                                      )
+        self.__logger = logger.getFileLogger(hostname,
+                                             log_dir='./logs',
+                                             log_file=f"{hostname}_{datetime.now().strftime('%Y%m%d%H%M%S')}.log")
 
         self.__async_task_h = async_task.TaskHandler()
 
@@ -77,6 +75,11 @@ class AsyncBaseTradeServer(object):
 
         # trade server start time
         self.__start_time = datetime.now()
+
+        # 统计
+        self.__order_num = 0
+        self.__trade_num = 0
+        self.__error_num = 0
 
     def getAccount(self):
         return self.__account_name
@@ -229,7 +232,7 @@ class AsyncBaseTradeServer(object):
 
         if req.head == trade_pb2.ReqMessage.Head.Value('INSERT_ORDER'):
             self.__logger.debug(f'insert order from strategy {req.logic_id}, '
-                                f'req_id: {req.req_id}, ticker: {req.insert_order.ticker}')
+                               f'req_id: {req.req_id}, ticker: {req.insert_order.ticker}')
             try:
                 if req.insert_order.action in (EtfConvertRequest.Action.CREATE, EtfConvertRequest.Action.REDEEM):
                     etf_convert_req = EtfConvertRequest.constructFromReq(req)
@@ -376,6 +379,8 @@ class AsyncBaseTradeServer(object):
         self.getTaskHandler().addCoroutineTask(self.sendLimitOrder(order))
         self.__last_order_time = datetime.now().timestamp()
 
+        self.__order_num += 1
+
     def onBatchOrder(self, req):
         batch_id = req.batch_order.batch_id
         if datetime.now().timestamp() - self.__last_order_time < self.__order_interval:
@@ -412,6 +417,7 @@ class AsyncBaseTradeServer(object):
         self.getTaskHandler().addCoroutineTask(self.sendOrdersInBatch(batch_id, order_list))
 
     def onEtfConvertReq(self, etf_convert: EtfConvertRequest):
+        self.registerActEtfConvert(etf_convert)
         self.getTaskHandler().addCoroutineTask(self.sendEtfConvert(etf_convert))
 
     def onCancelOrderReq(self, strategy_order_ref):
@@ -594,6 +600,8 @@ class AsyncBaseTradeServer(object):
 
         self._sendResp(resp_pb)
 
+        self.__error_num += 1
+
     def onTrade(self, ticker: str, price: float, quantity: float, commission: float,
                 dateTime: datetime, exchange_order_ref: str,  exchange_trade_ref: str, strategy_order_ref: str,
                 msg=None):
@@ -654,6 +662,8 @@ class AsyncBaseTradeServer(object):
         pb_ins.resp_id = str(uuid.uuid4())
 
         self._sendResp(pb_ins)
+
+        self.__trade_num += 0
 
     def onExecInfo(self, exchange_order_ref: str, dateTime, fill_quantity, avg_fill_price, cost, msg=None):
         """ 成交回报数据全量更新时使用
@@ -1011,6 +1021,12 @@ class AsyncBaseTradeServer(object):
         snapshot['update_timestamp'] = datetime.now().timestamp()
         snapshot['hostname'] = self.__hostname
 
+        snapshot['stat'] = {
+            "order_num": self.__order_num,
+            "trade_num": self.__trade_num,
+            "error_num": self.__error_num,
+        }
+
         await self.__zmq_client.pushLog(
             hostname=self.__hostname,
             type_='snapshot',
@@ -1091,9 +1107,8 @@ class AsyncBaseTradeServer(object):
 
         self.getLogger().info('listening to requests')
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self._monitorReq())
-        loop.close()
+        self.getTaskHandler().addCoroutineTask(self._monitorReq())
+        self.getTaskHandler().getLoop().run_forever()
 
     def stop(self):
         loop = asyncio.get_event_loop()

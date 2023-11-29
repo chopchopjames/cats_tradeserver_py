@@ -163,8 +163,9 @@ class CatsConnector(object):
                 print(record)
                 table.append(tuple(record))
 
-    async def _publish(self, msg):
-        await self.__r.publish(channel=self.__pub_channel,
+    async def _publish(self, account_id, msg):
+        print(f"{self.__pub_channel}|{account_id}", len(msg))
+        await self.__r.publish(channel=f"{self.__pub_channel}|{account_id}",
                                message=msg)
 
     async def qryActiveOrder(self):
@@ -176,8 +177,10 @@ class CatsConnector(object):
         active_order = active_order.groupby(by="ORD_NO").last()
         active_order = active_order[active_order['ORD_STATUS'] == '0']
 
-        to_send = {'prefix': 'ActOrd', 'data': active_order.groupby(by="ORD_NO").last().to_dict()}
-        await self._publish(json.dumps(to_send))
+        for account_id, group in active_order.groupby(by='ACCT'):
+            if len(group) > 0:
+                to_send = {'prefix': 'ActOrd', 'data': group.groupby(by="ORD_NO").last().to_dict()}
+                await self._publish(account_id, json.dumps(to_send))
 
     async def handelAccountResFile(self):
         """ 读取持仓和可用资金
@@ -187,18 +190,25 @@ class CatsConnector(object):
         asset = read_dbf_from_line(self.__asset_resfile, 0)
         asset_df = pd.DataFrame(asset)
 
-        if len(asset_df) > 0:
-            to_send = {'prefix': 'Asset', 'data': asset_df.to_dict()}
-            await self._publish(json.dumps(to_send))
+        for account_id, group in asset_df.groupby(by='ACCT'):
+            if len(group) > 0:
+                to_send = {'prefix': 'Asset', 'data': asset_df.to_dict()}
+                await self._publish(account_id, json.dumps(to_send))
 
     async def handleOrderUpdateFile(self):
         order_updates = read_dbf_from_line(self.__orderupdate_resfile, self.__orderupdate_skip_rowid)
 
-        if len(order_updates) > 0:
-            order_updates_df = pd.DataFrame(order_updates)
-            to_send = {'prefix': 'OrderUpdate', 'data': order_updates_df.to_dict()}
-            await self._publish(json.dumps(to_send))
-            self.__orderupdate_skip_rowid += len(order_updates_df)
+        if len(order_updates) == 0:
+            return
+
+        for account_id, group in pd.DataFrame(order_updates).groupby(by='ACCT'):
+            if len(group) > 0:
+                to_send = {'prefix': 'OrderUpdate', 'data': group.to_dict()}
+                await self._publish(account_id, json.dumps(to_send))
+
+        self.__orderupdate_skip_rowid += len(order_updates)
+
+        print(self.__orderupdate_skip_rowid, len(order_updates))
 
     async def qryOrderAndTradeResp(self):
         """ 顺序会对结果有影响，如果成交回报再报单确认之前，会找不到cust_id造成丢单
