@@ -125,7 +125,7 @@ class AsyncBaseTradeServer(object):
     def getActOrder(self, order_id: str) -> LimitOrder:
         return self.__active_orders.get(order_id, None)
 
-    def getActOrders(self):
+    def getActOrders(self) -> typing.Dict[str, LimitOrder]:
         return self.__active_orders
 
     def getStratOrderRef(self, exchange_ref):
@@ -663,7 +663,7 @@ class AsyncBaseTradeServer(object):
 
         self._sendResp(pb_ins)
 
-        self.__trade_num += 0
+        self.__trade_num += 1
 
     def onExecInfo(self, exchange_order_ref: str, dateTime, fill_quantity, avg_fill_price, cost, msg=None):
         """ 成交回报数据全量更新时使用
@@ -817,13 +817,13 @@ class AsyncBaseTradeServer(object):
     def updateAccountHoldings(self, holdings: typing.Dict[str, AccountHolding]):
         self.__account_holdings = holdings
         self.__account_holding_update_time = datetime.now()
-        self.getLogger().info("account holding updated")
+        self.getLogger().debug("account holding updated")
         self.addCoroutineTask(self.onQryPosition())
 
     def updateAccountBalance(self, balance: typing.Dict[str, AccountBalance]):
         self.__account_balance = balance
         self.__account_balance_update_time = datetime.now()
-        self.getLogger().info("account balance updated")
+        self.getLogger().debug("account balance updated")
 
     async def onQryPosition(self):
         if self.__account_holding_update_time is None:
