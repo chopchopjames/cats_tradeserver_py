@@ -63,6 +63,9 @@ class CatsConnector(object):
         self.__cancelreject_resfile = os.path.join(result_path, f"order_updates_ExtInfo.dbf")
         self.__req_file = os.path.join(result_path, f"instructions.dbf")
 
+        self.__optionfund_resfile = os.path.join(result_path, f"OptionFund.dbf")
+        self.__optionposi_resfile = os.path.join(result_path, f"OptionPosition.dbf")
+
         LOGGER.info(f"asset: {self.__asset_resfile},"
                     f"order_update: {self.__orderupdate_resfile},")
 
@@ -217,6 +220,23 @@ class CatsConnector(object):
         """
         await self.handleOrderUpdateFile()
 
+    async def readOptionFundAndPosition(self):
+        fund = read_dbf_from_line(self.__optionfund_resfile, 0)
+        fund_df = pd.DataFrame(fund)
+
+        for account_id, group in fund_df.groupby(by='ACCT'):
+            if len(group) > 0:
+                to_send = {'prefix': 'OptionFund', 'data': fund_df.to_dict()}
+                await self._publish(account_id, json.dumps(to_send))
+
+        posi = read_dbf_from_line(self.__optionposi_resfile, 0)
+        posi_df = pd.DataFrame(posi)
+
+        for account_id, group in posi_df.groupby(by='ACCT'):
+            if len(group) > 0:
+                to_send = {'prefix': 'OptionPosition', 'data': posi_df.to_dict()}
+                await self._publish(account_id, json.dumps(to_send))
+
     def run(self):
         LOGGER.info('connecting')
 
@@ -227,6 +247,8 @@ class CatsConnector(object):
         task_handler.runPeriodicAsyncJob(10, self.qryActiveOrder)
 
         task_handler.runPeriodicAsyncJob(0.01, self.qryOrderAndTradeResp)
+
+        task_handler.runPeriodicAsyncJob(10, self.readOptionFundAndPosition)
 
         task_handler.runPeriodicAsyncJob(interval=60 * 60, task_func=self.autoStop)
 
