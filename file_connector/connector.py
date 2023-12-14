@@ -22,6 +22,9 @@ import pandas as pd
 from datetime import datetime
 from dbfread import DBF
 
+from dbf_util import readRq, readCompact
+
+
 DATETIME_FORMAT = '%Y%m%d%H%M%S%f'
 
 if not os.path.exists('log'):
@@ -61,6 +64,8 @@ class CatsConnector(object):
         self.__orderupdate_resfile = os.path.join(result_path, f"order_updates.dbf")
         self.__orderupdateext_resfile = os.path.join(result_path, f"order_updates_ExtInfo.dbf")
         self.__cancelreject_resfile = os.path.join(result_path, f"order_updates_ExtInfo.dbf")
+        self.__creditcompact_resfile = os.path.join(result_path, f"creditcompact.dbf")
+        self.__creditenslosecuqty_resfile = os.path.join(result_path, f"creditenslosecuqty.dbf")
         self.__req_file = os.path.join(result_path, f"instructions.dbf")
 
         self.__optionfund_resfile = os.path.join(result_path, f"OptionFund.dbf")
@@ -190,13 +195,35 @@ class CatsConnector(object):
 
         :return:
         """
+        asset_res = dict()
         asset = read_dbf_from_line(self.__asset_resfile, 0)
         asset_df = pd.DataFrame(asset)
-
         for account_id, group in asset_df.groupby(by='ACCT'):
             if len(group) > 0:
-                to_send = {'prefix': 'Asset', 'data': asset_df.to_dict()}
-                await self._publish(account_id, json.dumps(to_send))
+                asset_res[account_id] = group.to_dict()
+
+        compact_res = dict()
+        compact_df = readCompact(self.__creditcompact_resfile)
+        for account_id, group in compact_df.groupby(by='ACCT'):
+            compact_res[account_id] = group.to_dict()
+
+        rq_res = dict()
+        rq_df = readRq(self.__creditenslosecuqty_resfile)
+        for account_id, group in rq_df.groupby(by='ACCT'):
+            rq_res[account_id] = group.to_dict()
+
+        account_ids = set()
+        account_ids.update(asset_res.keys())
+        account_ids.update(compact_res.keys())
+        account_ids.update(rq_res.keys())
+
+        for account_id in account_ids:
+            to_send = {'prefix': 'Asset',
+                       'asset': asset_res.get(account_id, dict()),
+                       "compact": compact_res.get(account_id, dict()),
+                       "rq": rq_res.get(account_id, dict()),
+                       }
+            await self._publish(account_id, json.dumps(to_send))
 
     async def handleOrderUpdateFile(self):
         order_updates = read_dbf_from_line(self.__orderupdate_resfile, self.__orderupdate_skip_rowid)
@@ -248,7 +275,7 @@ class CatsConnector(object):
 
         task_handler.runPeriodicAsyncJob(0.01, self.qryOrderAndTradeResp)
 
-        task_handler.runPeriodicAsyncJob(10, self.readOptionFundAndPosition)
+        # task_handler.runPeriodicAsyncJob(10, self.readOptionFundAndPosition)
 
         task_handler.runPeriodicAsyncJob(interval=60 * 60, task_func=self.autoStop)
 

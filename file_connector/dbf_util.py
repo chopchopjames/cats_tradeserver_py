@@ -2,65 +2,10 @@
 """
 .. moduleauthor:: Zhixiong Ge<56582881@qq.com>
 """
-
+import struct
 import pandas as pd
-from dbfread import DBF
-
-
-def read_dbf_from_line(filename, start_line):
-    ret = list()
-    table = DBF(filename, encoding='gbk', raw=False)
-    for i, record in enumerate(table):
-        if i >= start_line:
-            # Process the record
-            ret.append(record)
-    return ret
-rq = read_dbf_from_line('file_connector\\filedemo\\creditenslosecuqty.dbf', 0)
-rq_df = pd.DataFrame(rq)
-table = DBF('file_connector\\filedemo\\creditenslosecuqty.dbf', encoding='gbk', raw=False)
-
-for i, record in enumerate(table):
-    if i == 2:
-        break
-
-def read_dbf_from_line_utf8(filename, start_line):
-    ret = list()
-    table = DBF(filename, encoding='utf8')
-    for i, record in enumerate(table):
-        if i >= start_line:
-            # Process the record
-            ret.append(record)
-    return ret
-
-
-def read_dbf_from_line_iso(filename, start_line):
-    ret = list()
-    table = DBF(filename, encoding='ISO-8859-1')
-    for i, record in enumerate(table):
-        if i >= start_line:
-            # Process the record
-            ret.append(record)
-    return ret
-
-
-def read_dbf_from_line1(filename, start_line):
-    ret = list()
-    table = DBF(filename, load=True)
-    for i, record in enumerate(table):
-        if i >= start_line:
-            # Process the record
-            ret.append(record)
-    return ret
-
-
-asset = read_dbf_from_line('file_connector\\filedemo\\asset.dbf', 0)
-asset_df = pd.DataFrame(asset)
-
-order_updates = read_dbf_from_line('file_connector\\filedemo\\order_updates.dbf', 0)
-order_updates_df = pd.DataFrame(order_updates)
 
 def readRq(file_path):
-    import struct
     # 调用函数并打印头部信息
     records = list()
     with open(file_path, 'rb') as file:
@@ -85,10 +30,6 @@ def readRq(file_path):
 
     rq_df = pd.DataFrame(records, columns=['ACCT', 'ACCTTYPE', 'SYMBOL', 'QTY', 'WRITE_TIME'])
     return rq_df
-
-file_path = "file_connector\\filedemo\\creditenslosecuqty.dbf"
-rq_df = readRq(file_path)
-
 
 def readCompact(file_path):
     COL_INFO = [
@@ -150,7 +91,3 @@ def readCompact(file_path):
 
     compact_df = pd.DataFrame(records, columns=[col for col, _ in COL_INFO])
     return compact_df
-
-file_path = "file_connector\\filedemo\\creditcompact.dbf"
-compact_df = readCompact(file_path)
-

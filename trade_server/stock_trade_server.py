@@ -31,10 +31,9 @@ class MsgAction:
 
 class TraderServer(AsyncBaseTradeServer):
     def __init__(self, hostname):
-        AsyncBaseTradeServer.__init__(self, hostname=os.environ["TRADE_HOSTNAME"])
+        AsyncBaseTradeServer.__init__(self, hostname)
         self.getLogger().setLevel(os.environ.get('LOG_LEVEL', 'INFO').upper())
 
-        self.__hostname = hostname
         self.__date_str = datetime.now().strftime('%Y%m%d')
         self.__req_id = 0
         self.__start_time = datetime.now()
@@ -42,9 +41,10 @@ class TraderServer(AsyncBaseTradeServer):
         self.__holdings = dict()
         self.__qry_order_result = list()
 
-        self.__connector_sub_ch = os.environ["TRADE_REDIS_CONNECTOR_SUB_CH"]
-        self.__connector_pub_ch = os.environ["TRADE_REDIS_CONNECTOR_PUB_CH"]
-        self.__accountid = str(os.environ["TRADE_STOCK_ACCOUNTID"]) # 证券资金账号
+        self.__hostname = hostname
+        self.__connector_sub_ch = None
+        self.__connector_pub_ch = None
+        self.__accountid = None
 
         self.getLogger().info(f"connector_sub_ch: {self.__connector_sub_ch}, "
                               f"connector_pub_ch: {self.__connector_pub_ch}")
@@ -58,9 +58,14 @@ class TraderServer(AsyncBaseTradeServer):
     def genCustOrderId(self):
         return f"{self.__start_time.strftime('%d%H%M%S')}-{self.getReqId()}"
 
-    def handleAccountAndPositionResp(self, data):
+    def getAccountId(self):
+        return self.__accountid
+
+    def handleAccountAndPositionResp(self, asset_data, compact_data, rq_data):
         # 更新资金
-        asset_df = pd.DataFrame(data)
+        asset_df = pd.DataFrame(asset_data)
+        asset_df = asset_df[asset_df.ACCT == self.__accountid]
+
         asset_df['S3'] = asset_df['S3'].astype(float)
         asset_df['S2'] = asset_df['S2'].astype(float)
         asset_df['S4'] = asset_df['S4'].astype(float)
@@ -95,6 +100,57 @@ class TraderServer(AsyncBaseTradeServer):
                 short_margin=0,
             )
             holdings[ticker] = holding
+
+        # 融券
+        compact_df = pd.DataFrame(compact_data).set_index('STOCKCODE')
+        compact_df = compact_df[compact_df.ACCT == self.__accountid]
+        compact_df["RCMAMOUNT"] = compact_df["RCMAMOUNT"].astype(int)
+        grouped = compact_df.groupby('STOCKCODE')
+        compact_summary = pd.DataFrame()
+        compact_summary['RCMAMOUNT'] = grouped['RCMAMOUNT'].sum()
+
+        rq_df = pd.DataFrame(rq_data).set_index("SYMBOL")
+        rq_df = rq_df[rq_df.ACCT == self.__accountid]
+        rqall_df = pd.merge(compact_summary, rq_df, left_index=True, right_index=True, how='outer')
+        rqall_df.fillna(0, inplace=True)
+        for ticker, row in rqall_df.iterrows():
+            holding = holdings.get(ticker)
+
+            if holding is None:
+                holding = AccountHolding(
+                    long_avg_cost=0,
+                    long_holding=0,
+                    long_available=0,
+                    long_profit=0,
+                    long_margin=0,
+                    long_market_value=0,
+
+                    short_avg_cost=0,
+                    short_holding=int(getattr(row, "RCMAMOUNT")),
+                    short_available=int(getattr(row, "QTY")),
+                    short_profit=0,
+                    short_margin=0,
+                )
+
+            else:
+                long_holding = holdings[ticker]
+                holding = AccountHolding(
+                    long_avg_cost=long_holding.getLongAvailable(),
+                    long_holding=long_holding.getLongHolding(),
+                    long_available=long_holding.getLongAvailable(),
+                    long_profit=long_holding.getLongProfit(),
+                    long_margin=long_holding.getLongMargin(),
+                    long_market_value=long_holding.getLongMarketValue(),
+
+                    short_avg_cost=0,
+                    short_holding=int(getattr(row, "RCMAMOUNT")),
+                    short_available=int(getattr(row, "QTY")),
+                    short_profit=0,
+                    short_margin=0,
+                )
+
+            holdings[ticker] = holding
+
         self.updateAccountHoldings(holdings)
 
     async def handleOrderUpdates(self, data):
@@ -189,7 +245,7 @@ class TraderServer(AsyncBaseTradeServer):
                     to_cancel.append(order_id)
 
             if len(to_cancel) > 0:
-                await self._cancelOrderReq(to_cancel)
+                await self.cancelOrderReq(to_cancel)
                 self.__start_cancel_count += 1
 
     async def monitorConnectorResp(self):
@@ -206,7 +262,12 @@ class TraderServer(AsyncBaseTradeServer):
                 msg = json.loads(msg_str.decode())
                 # print(msg)
                 if msg['prefix'] == 'Asset':  # 持仓 & 资金
-                    self.handleAccountAndPositionResp(msg['data'])
+                    self.getLogger().info(msg)
+                    self.handleAccountAndPositionResp(
+                        asset_data=msg['asset'],
+                        compact_data=msg['compact'],
+                        rq_data=msg['rq'],
+                    )
 
                 elif msg['prefix'] == 'OrderUpdate':  # 委托回报
                     await self.handleOrderUpdates(msg['data'])
@@ -222,8 +283,8 @@ class TraderServer(AsyncBaseTradeServer):
                 self.getLogger().info(f"failed msg: {msg_str.decode()}")
 
                 # # TODO
-                # self.stop()
-                # raise e
+                self.stop()
+                raise e
 
     # TradeServer func start
     def getInstrumentTrait(self, ticker):
@@ -244,6 +305,15 @@ class TraderServer(AsyncBaseTradeServer):
         self.getLogger().info(f'sending: {msg}')
         await self.__redis_client.getTradeConn().publish_json(self.__connector_sub_ch, msg)
 
+    def getOrderReq(self, order: LimitOrder):
+        if order.isBuy():
+            action = '1'
+        else:
+            action = '2'
+
+        req = ('O',order.getCustId(),'0',self.__accountid,'',order.getTicker(),action,order.getQuantity(),order.getLimitPrice(),'0')
+        return req
+
     async def sendLimitOrder(self, order: LimitOrder):
         """
         data = [
@@ -254,20 +324,15 @@ class TraderServer(AsyncBaseTradeServer):
         :param order:
         :return:
         """
-        if order.isBuy():
-            action = '1'
-        else:
-            action = '2'
-
         order.setCustId(self.genCustOrderId())
-        req = ('O',order.getCustId(),'0',self.__accountid,'',order.getTicker(),action,order.getQuantity(),order.getLimitPrice(),'0')
+        req = self.getOrderReq(order)
 
         await self.sendMsgToRedis(
             action=MsgAction.INSERT_ORDER,
             data=[req],
         )
 
-    async def _cancelOrderReq(self, order_ids: list):
+    async def cancelOrderReq(self, order_ids: list):
         req = list()
         for order_id in order_ids:
             req.append(('C','','0',self.__accountid,order_id))
@@ -288,7 +353,7 @@ class TraderServer(AsyncBaseTradeServer):
         :return:
         """
         if order.getExchangeId() is not None:
-            await self._cancelOrderReq([order.getExchangeId()])
+            await self.cancelOrderReq([order.getExchangeId()])
 
     async def sendEtfConvert(self, etf_convert: EtfConvertRequest):
         """
@@ -316,14 +381,8 @@ class TraderServer(AsyncBaseTradeServer):
     async def sendOrdersInBatch(self, batch_id, order_list: typing.List[LimitOrder]):
         batch_req = list()
         for order in order_list:
-            if order.isBuy():
-                action = '1'
-            else:
-                action = '2'
-
             order.setCustId(self.genCustOrderId())
-            req = ('O', order.getCustId(), '0', self.__accountid, '', order.getTicker(), action, order.getQuantity(),
-                   order.getLimitPrice(), '0')
+            req = self.getOrderReq(order)
 
             batch_req.append(req)
 
@@ -333,7 +392,7 @@ class TraderServer(AsyncBaseTradeServer):
         )
 
     async def cancelOrdersInBatch(self, order_list: typing.List[LimitOrder]):
-        await self._cancelOrderReq([order.getExchangeId() for order in order_list])
+        await self.cancelOrderReq([order.getExchangeId() for order in order_list])
 
     async def qryActiveOrder(self):
         """定时更新"""
@@ -365,6 +424,14 @@ class TraderServer(AsyncBaseTradeServer):
         self.addCoroutineTask(self.monitorConnectorResp())
 
         super().run_forever()
+
+
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-t', '--hostname')
+    args = parser.parse_args()
+    return str(args.hostname),
 
 
 if __name__ == '__main__':
