@@ -177,13 +177,18 @@ class CatsConnector(object):
                                message=msg)
 
     async def qryActiveOrder(self):
-        order_updates = read_dbf_from_line(self.__orderupdate_resfile, 0)
-        order_updates_df = pd.DataFrame(order_updates)
+        try:
+            order_updates = read_dbf_from_line(self.__orderupdate_resfile, 0)
+            order_updates_df = pd.DataFrame(order_updates)
 
-        grouped = order_updates_df[order_updates_df['ORD_TIME'] != ''].groupby(by='ORD_NO')
-        active_order = grouped.filter(lambda x: not x['ORD_STATUS'].isin(['4', '5']).any())
-        active_order = active_order.groupby(by="ORD_NO").last()
-        active_order = active_order[active_order['ORD_STATUS'] == '0']
+            grouped = order_updates_df[order_updates_df['ORD_TIME'] != ''].groupby(by='ORD_NO')
+            active_order = grouped.filter(lambda x: not x['ORD_STATUS'].isin(['4', '5']).any())
+            active_order = active_order.groupby(by="ORD_NO").last()
+            active_order = active_order[active_order['ORD_STATUS'] == '0']
+
+        except Exception as e:
+            LOGGER.error(e)
+            return
 
         for account_id, group in active_order.groupby(by='ACCT'):
             if len(group) > 0:

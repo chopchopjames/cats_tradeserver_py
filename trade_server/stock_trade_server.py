@@ -127,7 +127,8 @@ class TraderServer(AsyncBaseTradeServer):
 
                     short_avg_cost=0,
                     short_holding=int(getattr(row, "RCMAMOUNT")),
-                    short_available=int(getattr(row, "QTY")),
+                    short_available=int(getattr(row, "RCMAMOUNT")),
+                    margin_sell_available=int(getattr(row, "QTY")),
                     short_profit=0,
                     short_margin=0,
                 )
@@ -144,7 +145,8 @@ class TraderServer(AsyncBaseTradeServer):
 
                     short_avg_cost=0,
                     short_holding=int(getattr(row, "RCMAMOUNT")),
-                    short_available=int(getattr(row, "QTY")),
+                    short_available=int(getattr(row, "RCMAMOUNT")),
+                    margin_sell_available=int(getattr(row, "QTY")),
                     short_profit=0,
                     short_margin=0,
                 )
@@ -262,7 +264,6 @@ class TraderServer(AsyncBaseTradeServer):
                 msg = json.loads(msg_str.decode())
                 # print(msg)
                 if msg['prefix'] == 'Asset':  # 持仓 & 资金
-                    self.getLogger().info(msg)
                     self.handleAccountAndPositionResp(
                         asset_data=msg['asset'],
                         compact_data=msg['compact'],

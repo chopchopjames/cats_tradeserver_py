@@ -18,7 +18,11 @@ class CreditTraderServer(TraderServer):
 
     def getOrderReq(self, order: LimitOrder):
         if order.isBuy():
-            action = 'E'  # 先买券还券，再买担保品
+            position = self.getAccountHolding(order.getTicker())
+            if position.getShortAvailable() >= order.getQuantity():
+                action = 'C'
+            else:
+                action = "1"
 
         else:
             holding = self.getAccountHolding(order.getTicker())
