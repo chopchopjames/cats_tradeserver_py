@@ -343,6 +343,10 @@ class TraderServer(AsyncBaseTradeServer):
             data=req,
         )
 
+    async def tryCancelOrderDelay(self, order: LimitOrder, delay: int = 3):
+        await asyncio.sleep(delay)
+        await self.cancelOrder(order)
+
     async def cancelOrder(self, order: LimitOrder):
         """
         data = [
@@ -355,6 +359,9 @@ class TraderServer(AsyncBaseTradeServer):
         """
         if order.getExchangeId() is not None:
             await self.cancelOrderReq([order.getExchangeId()])
+
+        else:
+            self.getTaskHandler().addCoroutineTask(self.tryCancelOrderDelay(order, delay=3))
 
     async def sendEtfConvert(self, etf_convert: EtfConvertRequest):
         """
