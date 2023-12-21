@@ -102,15 +102,24 @@ class TraderServer(AsyncBaseTradeServer):
             holdings[ticker] = holding
 
         # 融券
-        compact_df = pd.DataFrame(compact_data).set_index('STOCKCODE')
-        compact_df = compact_df[compact_df.ACCT == self.__accountid]
-        compact_df["RCMAMOUNT"] = compact_df["RCMAMOUNT"].astype(int)
-        grouped = compact_df.groupby('STOCKCODE')
-        compact_summary = pd.DataFrame()
-        compact_summary['RCMAMOUNT'] = grouped['RCMAMOUNT'].sum()
+        if len(rq_data) > 0:
+            rq_df = pd.DataFrame(rq_data).set_index("SYMBOL")
+            rq_df = rq_df[rq_df.ACCT == self.__accountid]
+        else:
+            rq_df = pd.DataFrame([], columns=['SYMBOL', 'QTY'])
+            rq_df = rq_df.set_index('SYMBOL')
 
-        rq_df = pd.DataFrame(rq_data).set_index("SYMBOL")
-        rq_df = rq_df[rq_df.ACCT == self.__accountid]
+        if len(compact_data) > 0:
+            compact_df = pd.DataFrame(compact_data).set_index('STOCKCODE')
+            compact_df = compact_df[compact_df.ACCT == self.__accountid]
+            compact_df["RCMAMOUNT"] = compact_df["RCMAMOUNT"].astype(int)
+            grouped = compact_df.groupby('STOCKCODE')
+            compact_summary = pd.DataFrame()
+            compact_summary['RCMAMOUNT'] = grouped['RCMAMOUNT'].sum()
+        else:
+            compact_summary = pd.DataFrame([], columns=['STOCKCODE', 'RCMAMOUNT'])
+            compact_summary = compact_summary.set_index('STOCKCODE')
+
         rqall_df = pd.merge(compact_summary, rq_df, left_index=True, right_index=True, how='outer')
         rqall_df.fillna(0, inplace=True)
         for ticker, row in rqall_df.iterrows():

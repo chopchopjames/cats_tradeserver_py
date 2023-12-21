@@ -20,9 +20,9 @@ class CreditTraderServer(TraderServer):
         if order.isBuy():
             position = self.getAccountHolding(order.getTicker())
             if position.getShortAvailable() >= order.getQuantity():
-                action = 'C'
+                action = 'C'  # 买券还券
             else:
-                action = "1"
+                action = "1"  # 买担保品
 
         else:
             holding = self.getAccountHolding(order.getTicker())
