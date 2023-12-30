@@ -51,14 +51,14 @@ class TraderServer(StockTraderServer):
         else:
             account = self.getAccountBalance()
             if account['CNY'].getMargin() < 0.7:
-                return "FB"  # 卖出开仓
+                action = "FB"  # 卖出开仓
 
             else:
                 holding = self.getAccountHolding(order.getTicker())
                 if holding is None or holding.getLongAvailable() >= order.getQuantity():
-                    return "FD"  # 卖出平仓
+                    action = "FD"  # 卖出平仓
                 else:
-                    return "FB"
+                    action = "FB"
 
         req = ('O',order.getCustId(),'0B',self.getAccountId(),'',order.getTicker(),action,order.getQuantity(),order.getLimitPrice(),'0')
 

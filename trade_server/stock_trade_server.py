@@ -61,7 +61,7 @@ class TraderServer(AsyncBaseTradeServer):
     def getAccountId(self):
         return self.__accountid
 
-    def handleAccountAndPositionResp(self, asset_data, compact_data, rq_data):
+    async def handleAccountAndPositionResp(self, asset_data, compact_data, rq_data):
         # 更新资金
         asset_df = pd.DataFrame(asset_data)
         asset_df = asset_df[asset_df.ACCT == self.__accountid]
@@ -70,6 +70,7 @@ class TraderServer(AsyncBaseTradeServer):
         asset_df['S2'] = asset_df['S2'].astype(float)
         asset_df['S4'] = asset_df['S4'].astype(float)
         asset_df['S8'] = asset_df['S8'].replace('', 0.0).astype(float)
+        asset_df['S5'] = asset_df['S5'].astype(str)
 
         bal = AccountBalance(
             balance=asset_df['S3'].sum(),
@@ -82,22 +83,56 @@ class TraderServer(AsyncBaseTradeServer):
         self.updateAccountBalance({'CNY': bal})
 
         # 更新持仓
+
+        def _holding(group):
+            ret = pd.Series()
+
+            long = group[group['S5'] == "0"]
+            if len(long) > 0:
+                long = long.iloc[0]
+                ret['long_holding'] = long['S2']
+                ret['long_available'] = long['S3']
+                ret['long_avg_cost'] = long['S4']
+                ret['long_market_value'] = long['S8']
+            else:
+                ret['long_holding'] = 0
+                ret['long_available'] = 0
+                ret['long_avg_cost'] = 0
+                ret['long_market_value'] = 0
+
+            short = group[group['S5'] == "1"]
+            if len(short) > 0:
+                short = short.iloc[0]
+                ret['short_holding'] = short['S2']
+                ret['short_available'] = short['S3']
+                ret['short_avg_cost'] = short['S4']
+                ret['short_market_value'] = short['S8']
+            else:
+                ret['short_holding'] = 0
+                ret['short_available'] = 0
+                ret['short_avg_cost'] = 0
+                ret['short_market_value'] = 0
+
+            return ret
+
+        holding_df = asset_df.iloc[1:].groupby(by='S1').apply(_holding)
+
         holdings = dict()
-        for i, row in asset_df.iloc[1:].iterrows():
-            ticker = row['S1']
+        for ticker, row in holding_df.iterrows():
             holding = AccountHolding(
-                long_avg_cost=row['S4'],
-                long_holding=row['S2'],
-                long_available=row['S3'],
+                long_avg_cost=row['long_avg_cost'],
+                long_holding=row['long_holding'],
+                long_available=row['long_available'],
                 long_profit=0,
                 long_margin=0,
-                long_market_value=row['S8'],
+                long_market_value=row['long_market_value'],
 
-                short_avg_cost=0,
-                short_holding=0,
-                short_available=0,
+                short_avg_cost=row['short_avg_cost'],
+                short_holding=row['short_holding'],
+                short_available=row['short_available'],
                 short_profit=0,
                 short_margin=0,
+                short_market_value=row['short_market_value'],
             )
             holdings[ticker] = holding
 
@@ -273,7 +308,7 @@ class TraderServer(AsyncBaseTradeServer):
                 msg = json.loads(msg_str.decode())
                 # print(msg)
                 if msg['prefix'] == 'Asset':  # 持仓 & 资金
-                    self.handleAccountAndPositionResp(
+                    await self.handleAccountAndPositionResp(
                         asset_data=msg['asset'],
                         compact_data=msg['compact'],
                         rq_data=msg['rq'],
