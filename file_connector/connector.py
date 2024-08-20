@@ -24,7 +24,6 @@ from dbfread import DBF
 
 from dbf_util import readRq, readCompact
 
-
 DATETIME_FORMAT = '%Y%m%d%H%M%S%f'
 
 if not os.path.exists('log'):
@@ -68,6 +67,9 @@ class CatsConnector(object):
         self.__creditenslosecuqty_resfile = os.path.join(result_path, f"creditenslosecuqty.dbf")
         self.__req_file = os.path.join(result_path, f"instructions.dbf")
 
+        self.__creditfund_resfile = os.path.join(result_path, f"CreditFund.dbf")
+        self.__creditposi_resfile = os.path.join(result_path, f"CreditPosition.dbf")
+
         self.__optionfund_resfile = os.path.join(result_path, f"OptionFund.dbf")
         self.__optionposi_resfile = os.path.join(result_path, f"OptionPosition.dbf")
 
@@ -90,7 +92,7 @@ class CatsConnector(object):
         :return:
         """
         cur = datetime.now(tz=pytz.UTC).astimezone(pytz.timezone('Asia/Shanghai'))
-        if cur.hour > 21:
+        if cur.hour > 16:
             self.__eof = True
             logging.info("auto stop")
 
@@ -151,7 +153,6 @@ class CatsConnector(object):
         # 添加新记录
         with table:
             for record in data:
-                print(record)
                 table.append(tuple(record))
 
     def writeCancelOrderToFile(self, data: list):
@@ -168,7 +169,6 @@ class CatsConnector(object):
         # 添加新记录
         with table:
             for record in data:
-                print(record)
                 table.append(tuple(record))
 
     async def _publish(self, account_id, msg):
@@ -195,7 +195,7 @@ class CatsConnector(object):
                 to_send = {'prefix': 'ActOrd', 'data': group.groupby(by="ORD_NO").last().to_dict()}
                 await self._publish(account_id, json.dumps(to_send))
 
-    async def handelAccountResFile(self):
+    async def readStockFundAndPosition(self):
         """ 读取持仓和可用资金
 
         :return:
@@ -208,20 +208,21 @@ class CatsConnector(object):
                 asset_res[account_id] = group.to_dict()
 
         compact_res = dict()
-        compact_df = readCompact(self.__creditcompact_resfile)
-        for account_id, group in compact_df.groupby(by='ACCT'):
-            compact_res[account_id] = group.to_dict()
+        if os.path.exists(self.__creditcompact_resfile):
+            compact_df = readCompact(self.__creditcompact_resfile)
+            for account_id, group in compact_df.groupby(by='ACCT'):
+                compact_res[account_id] = group.to_dict()
 
         rq_res = dict()
-        rq_df = readRq(self.__creditenslosecuqty_resfile)
-        for account_id, group in rq_df.groupby(by='ACCT'):
-            rq_res[account_id] = group.to_dict()
+        if os.path.exists(self.__creditenslosecuqty_resfile):
+            rq_df = readRq(self.__creditenslosecuqty_resfile)
+            for account_id, group in rq_df.groupby(by='ACCT'):
+                rq_res[account_id] = group.to_dict()
 
         account_ids = set()
         account_ids.update(asset_res.keys())
         account_ids.update(compact_res.keys())
         account_ids.update(rq_res.keys())
-
         for account_id in account_ids:
             to_send = {'prefix': 'Asset',
                        'asset': asset_res.get(account_id, dict()),
@@ -243,8 +244,6 @@ class CatsConnector(object):
 
         self.__orderupdate_skip_rowid += len(order_updates)
 
-        print(self.__orderupdate_skip_rowid, len(order_updates))
-
     async def qryOrderAndTradeResp(self):
         """ 顺序会对结果有影响，如果成交回报再报单确认之前，会找不到cust_id造成丢单
 
@@ -252,22 +251,65 @@ class CatsConnector(object):
         """
         await self.handleOrderUpdateFile()
 
+    async def readCreditFundAndPosition(self):
+        fund = read_dbf_from_line(self.__creditfund_resfile, 0)
+        fund_df = pd.DataFrame(fund)
+
+        account_data_map = dict()
+        for account_id, group in fund_df.groupby(by='ACCT'):
+            if len(group) > 0:
+                account_data_map[account_id] = dict()
+                account_data_map[account_id]['fund'] = group.to_dict()
+
+        posi = read_dbf_from_line(self.__creditposi_resfile, 0)
+        posi_df = pd.DataFrame(posi)
+
+        for account_id, group in posi_df.groupby(by='ACCT'):
+            if account_id in account_data_map and len(group) > 0:
+                account_data_map[account_id]['posi'] = group.to_dict()
+
+        compact_res = dict()
+        if os.path.exists(self.__creditcompact_resfile):
+            compact_df = readCompact(self.__creditcompact_resfile)
+            for account_id, group in compact_df.groupby(by='ACCT'):
+                compact_res[account_id] = group.to_dict()
+
+        rq_res = dict()
+        if os.path.exists(self.__creditenslosecuqty_resfile):
+            rq_df = readRq(self.__creditenslosecuqty_resfile)
+            for account_id, group in rq_df.groupby(by='ACCT'):
+                rq_res[account_id] = group.to_dict()
+
+        for account_id in account_data_map.keys():
+            to_send = {'prefix': 'Asset',
+                       'fund': account_data_map[account_id]['fund'],
+                       'posi': account_data_map[account_id].get('posi', {}),
+                       "compact": compact_res.get(account_id, dict()),
+                       "rq": rq_res.get(account_id, dict()),
+                       }
+            await self._publish(account_id, json.dumps(to_send))
+
     async def readOptionFundAndPosition(self):
         fund = read_dbf_from_line(self.__optionfund_resfile, 0)
         fund_df = pd.DataFrame(fund)
 
+        account_data_map = dict()
         for account_id, group in fund_df.groupby(by='ACCT'):
             if len(group) > 0:
-                to_send = {'prefix': 'OptionFund', 'data': fund_df.to_dict()}
-                await self._publish(account_id, json.dumps(to_send))
+                account_data_map[account_id] = dict()
+                account_data_map[account_id]['fund'] = group.to_dict()
 
         posi = read_dbf_from_line(self.__optionposi_resfile, 0)
         posi_df = pd.DataFrame(posi)
 
         for account_id, group in posi_df.groupby(by='ACCT'):
-            if len(group) > 0:
-                to_send = {'prefix': 'OptionPosition', 'data': posi_df.to_dict()}
-                await self._publish(account_id, json.dumps(to_send))
+            if account_id in account_data_map and len(group) > 0:
+                account_data_map[account_id]['posi'] = group.to_dict()
+
+        for account_id in account_data_map.keys():
+            to_send = {'prefix': 'Asset', 'fund': account_data_map[account_id]['fund'],
+                       'posi': account_data_map[account_id].get('posi', {})}
+            await self._publish(account_id, json.dumps(to_send))
 
     def run(self):
         LOGGER.info('connecting')
@@ -275,12 +317,12 @@ class CatsConnector(object):
         task_handler = async_task.TaskHandler()
         task_handler.getLoop().run_until_complete(self.connect())
 
-        task_handler.runPeriodicAsyncJob(10, self.handelAccountResFile)
+        task_handler.runPeriodicAsyncJob(10, self.readStockFundAndPosition)
+        task_handler.runPeriodicAsyncJob(10, self.readOptionFundAndPosition)
+        task_handler.runPeriodicAsyncJob(10, self.readCreditFundAndPosition)
         task_handler.runPeriodicAsyncJob(10, self.qryActiveOrder)
 
         task_handler.runPeriodicAsyncJob(0.01, self.qryOrderAndTradeResp)
-
-        # task_handler.runPeriodicAsyncJob(10, self.readOptionFundAndPosition)
 
         task_handler.runPeriodicAsyncJob(interval=60 * 60, task_func=self.autoStop)
 
@@ -295,8 +337,8 @@ if __name__ == '__main__':
         redis_port='6379',
         redis_page=1,
         account_id='1648039391',
-        pub_channel='cats-connector-pub|xd',
-        sub_channel='cats-connector-sub|xd',
+        pub_channel='cats-connector-pub|rb',
+        sub_channel='cats-connector-sub|rb',
         result_path='C:\\Wealth CATS 4.0\\scan_order',
     )
 

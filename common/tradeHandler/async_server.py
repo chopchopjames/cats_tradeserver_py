@@ -28,6 +28,13 @@ from xtrade_essential.xlib import protobuf_to_dict
 from xtrade_essential.xlib import logger
 
 
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.int64):
+            return int(obj)
+        return super(CustomEncoder, self).default(obj)
+
+
 class AsyncBaseTradeServer(object):
     def __init__(self, hostname):
         self.__hostname = hostname
@@ -1030,7 +1037,7 @@ class AsyncBaseTradeServer(object):
         await self.__zmq_client.pushLog(
             hostname=self.__hostname,
             type_='snapshot',
-            msg_str=json.dumps(snapshot).encode(),
+            msg_str=json.dumps(snapshot, cls=CustomEncoder).encode(),
         )
 
     async def _cancelExpiredOrders(self):

@@ -46,9 +46,6 @@ class TraderServer(AsyncBaseTradeServer):
         self.__connector_pub_ch = None
         self.__accountid = None
 
-        self.getLogger().info(f"connector_sub_ch: {self.__connector_sub_ch}, "
-                              f"connector_pub_ch: {self.__connector_pub_ch}")
-
         self.__redis_client = RedisClient()
 
     def getReqId(self):
@@ -61,16 +58,17 @@ class TraderServer(AsyncBaseTradeServer):
     def getAccountId(self):
         return self.__accountid
 
-    async def handleAccountAndPositionResp(self, asset_data, compact_data, rq_data):
+    async def handleAccountAndPositionResp(self, msg_dict: dict):
+        asset_data = msg_dict['asset']
+
         # 更新资金
         asset_df = pd.DataFrame(asset_data)
-        asset_df = asset_df[asset_df.ACCT == self.__accountid]
 
-        asset_df['S3'] = asset_df['S3'].astype(float)
         asset_df['S2'] = asset_df['S2'].astype(float)
+        asset_df['S3'] = asset_df['S3'].astype(float)
         asset_df['S4'] = asset_df['S4'].astype(float)
-        asset_df['S8'] = asset_df['S8'].replace('', 0.0).astype(float)
         asset_df['S5'] = asset_df['S5'].astype(str)
+        asset_df['S8'] = asset_df['S8'].replace('', 0.0).astype(float)
 
         bal = AccountBalance(
             balance=asset_df['S3'].sum(),
@@ -83,40 +81,23 @@ class TraderServer(AsyncBaseTradeServer):
         self.updateAccountBalance({'CNY': bal})
 
         # 更新持仓
-
         def _holding(group):
             ret = pd.Series()
-
             long = group[group['S5'] == "0"]
             if len(long) > 0:
                 long = long.iloc[0]
-                ret['long_holding'] = long['S2']
-                ret['long_available'] = long['S3']
-                ret['long_avg_cost'] = long['S4']
-                ret['long_market_value'] = long['S8']
+                ret['long_holding'] = int(long['S2'])
+                ret['long_available'] = int(long['S3'])
+                ret['long_avg_cost'] = float(long['S4'])
+                ret['long_market_value'] = float(long['S8'])
             else:
                 ret['long_holding'] = 0
                 ret['long_available'] = 0
                 ret['long_avg_cost'] = 0
                 ret['long_market_value'] = 0
-
-            short = group[group['S5'] == "1"]
-            if len(short) > 0:
-                short = short.iloc[0]
-                ret['short_holding'] = short['S2']
-                ret['short_available'] = short['S3']
-                ret['short_avg_cost'] = short['S4']
-                ret['short_market_value'] = short['S8']
-            else:
-                ret['short_holding'] = 0
-                ret['short_available'] = 0
-                ret['short_avg_cost'] = 0
-                ret['short_market_value'] = 0
-
             return ret
 
         holding_df = asset_df.iloc[1:].groupby(by='S1').apply(_holding)
-
         holdings = dict()
         for ticker, row in holding_df.iterrows():
             holding = AccountHolding(
@@ -127,74 +108,13 @@ class TraderServer(AsyncBaseTradeServer):
                 long_margin=0,
                 long_market_value=row['long_market_value'],
 
-                short_avg_cost=row['short_avg_cost'],
-                short_holding=row['short_holding'],
-                short_available=row['short_available'],
+                short_avg_cost=0,
+                short_holding=0,
+                short_available=0,
                 short_profit=0,
                 short_margin=0,
-                short_market_value=row['short_market_value'],
+                short_market_value=0,
             )
-            holdings[ticker] = holding
-
-        # 融券
-        if len(rq_data) > 0:
-            rq_df = pd.DataFrame(rq_data).set_index("SYMBOL")
-            rq_df = rq_df[rq_df.ACCT == self.__accountid]
-        else:
-            rq_df = pd.DataFrame([], columns=['SYMBOL', 'QTY'])
-            rq_df = rq_df.set_index('SYMBOL')
-
-        if len(compact_data) > 0:
-            compact_df = pd.DataFrame(compact_data).set_index('STOCKCODE')
-            compact_df = compact_df[compact_df.ACCT == self.__accountid]
-            compact_df["RCMAMOUNT"] = compact_df["RCMAMOUNT"].astype(int)
-            grouped = compact_df.groupby('STOCKCODE')
-            compact_summary = pd.DataFrame()
-            compact_summary['RCMAMOUNT'] = grouped['RCMAMOUNT'].sum()
-        else:
-            compact_summary = pd.DataFrame([], columns=['STOCKCODE', 'RCMAMOUNT'])
-            compact_summary = compact_summary.set_index('STOCKCODE')
-
-        rqall_df = pd.merge(compact_summary, rq_df, left_index=True, right_index=True, how='outer')
-        rqall_df.fillna(0, inplace=True)
-        for ticker, row in rqall_df.iterrows():
-            holding = holdings.get(ticker)
-
-            if holding is None:
-                holding = AccountHolding(
-                    long_avg_cost=0,
-                    long_holding=0,
-                    long_available=0,
-                    long_profit=0,
-                    long_margin=0,
-                    long_market_value=0,
-
-                    short_avg_cost=0,
-                    short_holding=int(getattr(row, "RCMAMOUNT")),
-                    short_available=int(getattr(row, "RCMAMOUNT")),
-                    margin_sell_available=int(getattr(row, "QTY")),
-                    short_profit=0,
-                    short_margin=0,
-                )
-
-            else:
-                long_holding = holdings[ticker]
-                holding = AccountHolding(
-                    long_avg_cost=long_holding.getLongAvailable(),
-                    long_holding=long_holding.getLongHolding(),
-                    long_available=long_holding.getLongAvailable(),
-                    long_profit=long_holding.getLongProfit(),
-                    long_margin=long_holding.getLongMargin(),
-                    long_market_value=long_holding.getLongMarketValue(),
-
-                    short_avg_cost=0,
-                    short_holding=int(getattr(row, "RCMAMOUNT")),
-                    short_available=int(getattr(row, "RCMAMOUNT")),
-                    margin_sell_available=int(getattr(row, "QTY")),
-                    short_profit=0,
-                    short_margin=0,
-                )
-
             holdings[ticker] = holding
 
         self.updateAccountHoldings(holdings)
@@ -305,13 +225,12 @@ class TraderServer(AsyncBaseTradeServer):
                 if msg_str is None:
                     continue
 
+                self.getLogger().debug(f"msg: {msg_str.decode()}")
+
                 msg = json.loads(msg_str.decode())
-                # print(msg)
                 if msg['prefix'] == 'Asset':  # 持仓 & 资金
                     await self.handleAccountAndPositionResp(
-                        asset_data=msg['asset'],
-                        compact_data=msg['compact'],
-                        rq_data=msg['rq'],
+                        msg
                     )
 
                 elif msg['prefix'] == 'OrderUpdate':  # 委托回报
