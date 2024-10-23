@@ -2,8 +2,12 @@
 """
 .. moduleauthor:: Zhixiong Ge<56582881@qq.com>
 """
+
 import struct
 import pandas as pd
+from dbfread import DBF
+import geopandas as gpd
+
 
 def readRq(file_path):
     # 调用函数并打印头部信息
@@ -30,6 +34,7 @@ def readRq(file_path):
 
     rq_df = pd.DataFrame(records, columns=['ACCT', 'ACCTTYPE', 'SYMBOL', 'QTY', 'WRITE_TIME'])
     return rq_df
+
 
 def readCompact(file_path):
     COL_INFO = [
@@ -91,3 +96,31 @@ def readCompact(file_path):
 
     compact_df = pd.DataFrame(records, columns=[col for col, _ in COL_INFO])
     return compact_df
+
+
+def read_dbf_from_line(filename, start_line):
+    try:
+        table = DBF(filename, load=False)
+    except PermissionError as e:
+        return None
+
+    if start_line < len(table):
+        ret = gpd.read_file(filename)
+        return ret.iloc[start_line:]
+    else:
+        return None
+
+
+if __name__ == '__main__':
+    import os
+    file_dir = os.path.join(os.path.dirname(__file__))
+    data = read_dbf_from_line(os.path.join(file_dir, 'filedemo', 'OptionPosition.dbf'), 0)
+    data = pd.DataFrame(data)
+    # print(data)
+
+    # Attempt to read the DBF file using GeoPandas, which can handle DBF files as well
+    file_path = os.path.join(file_dir, 'filedemo', 'OptionPosition.dbf')
+
+    data = gpd.read_file(file_path)
+    print(data)
+

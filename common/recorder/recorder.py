@@ -53,30 +53,33 @@ class TradeRecorder:
     async def monitorMsg(self):
         while 1:
             msg = await self.__pull_req_sock.recv()
-            hostname, type_, msg_bytes = msg.split(b'\t', 2)
-            print(hostname, type_, msg_bytes)
 
-            if type_ == b"req":
-                pb_ins = trade_pb2.ReqMessage()
-                pb_ins.ParseFromString(msg_bytes)
-                doc = protobuf_to_dict(pb_ins)
-                doc['hostname'] = hostname.decode()
+            try:
+                hostname, type_, msg_bytes = msg.split(b'\t', 2)
+                if type_ == b"req":
+                    pb_ins = trade_pb2.ReqMessage()
+                    pb_ins.ParseFromString(msg_bytes)
+                    doc = protobuf_to_dict(pb_ins)
+                    doc['hostname'] = hostname.decode()
 
-                self.__req_redis.append(doc)
+                    self.__req_redis.append(doc)
 
-            elif type_ == b'resp':
-                pb_ins = trade_pb2.RespMessage()
-                pb_ins.ParseFromString(msg_bytes)
-                doc = protobuf_to_dict(pb_ins)
-                doc['hostname'] = hostname.decode()
+                elif type_ == b'resp':
+                    pb_ins = trade_pb2.RespMessage()
+                    pb_ins.ParseFromString(msg_bytes)
+                    doc = protobuf_to_dict(pb_ins)
+                    doc['hostname'] = hostname.decode()
 
-                self.__resp_redis.append(doc)
+                    self.__resp_redis.append(doc)
 
-            elif type_ == b'snapshot':
-                doc = json.loads(msg_bytes)
-                doc['hostname'] = hostname.decode()
+                elif type_ == b'snapshot':
+                    doc = json.loads(msg_bytes)
+                    doc['hostname'] = hostname.decode()
 
-                await self.updateSnapshotToRedis(doc)
+                    await self.updateSnapshotToRedis(doc)
+
+            except Exception as e:
+                self.__logger.error(f'Error: {e}')
 
     async def updateSnapshotToRedis(self, snapshot: dict):
         await self.__redis.setSnapshot(

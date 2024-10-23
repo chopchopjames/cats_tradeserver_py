@@ -37,9 +37,8 @@ class CreditTraderServer(TraderServer):
         posi_df = pd.DataFrame(msg_dict['posi'])
         posi_df['long_holding'] = posi_df['CURQTY'].astype(float)
         posi_df['long_available'] = posi_df['ENABLEQTY'].astype(float)
-        posi_df['long_avg_cost'] = posi_df['COSTPRICE'].astype(float)
         posi_df['long_market_value'] = posi_df['MKTVALUE'].astype(float)
-        posi_df = posi_df.set_index('SYMBOL')[['long_holding', 'long_available', 'long_avg_cost', 'long_market_value']]
+        posi_df = posi_df.set_index('SYMBOL')[['long_holding', 'long_available', 'long_market_value']]
 
         # 融券可用
         rq_data = msg_dict['rq']
@@ -75,7 +74,7 @@ class CreditTraderServer(TraderServer):
         holdings = dict()
         for ticker, row in holding_df.iterrows():
             holding = AccountHolding(
-                long_avg_cost=row['long_avg_cost'],
+                long_avg_cost=row['long_market_value']/max(row['long_holding'], 1),
                 long_holding=row['long_holding'],
                 long_available=row['long_available'],
                 long_market_value=row['long_market_value'],
@@ -110,9 +109,9 @@ class CreditTraderServer(TraderServer):
             position = self.getAccountHolding(order.getTicker())
             balance = self.getAccountBalance()['CNY']
             if position is not None and position.getShortAvailable() >= order.getQuantity():
-                action = 'E'  # 买券还券
+                action = 'C'  # 买券还券
             elif order.getQuantity() * order.getLimitPrice() < balance.getCashAvailable():
-                action = "E"  # 买担保品
+                action = "1"  # 买担保品
             else:
                 action = 'A'
 

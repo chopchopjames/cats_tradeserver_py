@@ -36,50 +36,74 @@ class TraderServer(StockTraderServer):
         StockTraderServer.__init__(self, hostname)
 
     async def handleAccountAndPositionResp(self, msg_dict: dict):
-        if 'fund' not in msg_dict:
-            return
-
-        fund_df = pd.DataFrame(msg_dict['fund'])
-        fund_df['TOTEQUITY'] = fund_df['TOTEQUITY'].astype(float)
-        fund_df['FETBALANCE'] = fund_df['FETBALANCE'].astype(float)
+        asset_data = msg_dict['asset']
 
         # 更新资金
+        asset_df = pd.DataFrame(asset_data)
+
+        asset_df['S2'] = asset_df['S2'].astype(float)
+        asset_df['S3'] = asset_df['S3'].astype(float)
+        asset_df['S4'] = asset_df['S4'].astype(float)
+        asset_df['S5'] = asset_df['S5'].astype(str)
+        asset_df['S8'] = asset_df['S8'].replace('', 0.0).astype(float)
+
         bal = AccountBalance(
-            balance=fund_df.iloc[0]["TOTEQUITY"],
-            cash_balance=fund_df.iloc[0]["FETBALANCE"],
-            cash_available=fund_df.iloc[0]["FETBALANCE"],
-            margin=float(fund_df.iloc[0]["CURMARGIN"].replace('%', '')),
+            balance=asset_df['S3'].sum(),
+            cash_balance=asset_df.iloc[0]['S3'],
+            cash_available=asset_df.iloc[0]['S4'],
+            margin=0,
             unrealized_pnl=0,
             realized_pnl=0,
         )
         self.updateAccountBalance({'CNY': bal})
 
         # 更新持仓
-        posi_df = pd.DataFrame(msg_dict['posi'])
-        posi_df['CURRENTQTY'] = posi_df['CURRENTQTY'].astype(float)
-        posi_df['ENABLEQTY'] = posi_df['ENABLEQTY'].astype(float)
-        posi_df['COSTPRICE'] = posi_df['COSTPRICE'].astype(float)
-        posi_df['MKTVALUE'] = posi_df['MKTVALUE'].astype(float)
+        def _holding(group):
+            ret = pd.Series()
+            long = group[group['S5'] == "0"]
+            if len(long) > 0:
+                long = long.iloc[0]
+                ret['long_holding'] = int(long['S2'])
+                ret['long_available'] = int(long['S3'])
+                ret['long_avg_cost'] = float(long['S4'])
+                ret['long_market_value'] = float(long['S8'])
+            else:
+                ret['long_holding'] = 0
+                ret['long_available'] = 0
+                ret['long_avg_cost'] = 0
+                ret['long_market_value'] = 0
 
+            short = group[group['S5'] == "1"]
+            if len(short) > 0:
+                short = short.iloc[0]
+                ret['short_holding'] = int(short['S2'])
+                ret['short_available'] = int(short['S3'])
+                ret['short_avg_cost'] = float(short['S4'])
+                ret['short_market_value'] = float(short['S8'])
+            else:
+                ret['short_holding'] = 0
+                ret['short_available'] = 0
+                ret['short_avg_cost'] = 0
+                ret['short_market_value'] = 0
+            return ret
+
+        holding_df = asset_df.iloc[1:].groupby(by='S1').apply(_holding)
         holdings = dict()
-        for ticker, group in posi_df.groupby(by="SYMBOL"):
-            long_ = group[group["DIRECTION"] == "0"]
-            short_ = group[group["DIRECTION"] == "1"]
-
+        for ticker, row in holding_df.iterrows():
             holding = AccountHolding(
-                long_avg_cost=long_['MKTVALUE'].sum() / max(long_['CURRENTQTY'].sum(), 1),
-                long_holding=long_['CURRENTQTY'].sum(),
-                long_available=long_['ENABLEQTY'].sum(),
+                long_avg_cost=row['long_avg_cost'],
+                long_holding=row['long_holding'],
+                long_available=row['long_available'],
                 long_profit=0,
                 long_margin=0,
-                long_market_value=long_['MKTVALUE'].sum(),
+                long_market_value=row['long_market_value'],
 
-                short_avg_cost=short_['MKTVALUE'].sum() / max(short_['CURRENTQTY'].sum(), 1),
-                short_holding=short_['CURRENTQTY'].sum(),
-                short_available=short_['ENABLEQTY'].sum(),
+                short_avg_cost=0,
+                short_holding=row['short_holding'],
+                short_available=row['short_available'],
                 short_profit=0,
                 short_margin=0,
-                short_market_value=short_['MKTVALUE'].sum(),
+                short_market_value=row['short_market_value'],
             )
             holdings[ticker] = holding
 

@@ -147,7 +147,7 @@ def test_stock():
     # 报单
     print(10*'*', 'send order', 10*'*')
     ticker = '512010.SH'
-    limit_price = 0.32
+    limit_price = 0.10
     quantity = 100
     action = trade_pb2.OrderAction.Value('BUY')
     type_ = trade_pb2.OrderType.Value('LIMIT')

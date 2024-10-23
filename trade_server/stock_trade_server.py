@@ -199,7 +199,7 @@ class TraderServer(AsyncBaseTradeServer):
 
     async def handleActOrderRes(self, data):
         actorder_df = pd.DataFrame(data)
-        print(actorder_df)
+        actorder_df = actorder_df.dropna(subset=['ORD_TIME'])
 
         if self.__start_cancel_count <= 3:
             # start cancel

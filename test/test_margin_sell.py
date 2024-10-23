@@ -146,29 +146,28 @@ def test_margin():
 
     # 报单
     print(10*'*', 'send order', 10*'*')
-    ticker = '560010.SH'
-    limit_price = 2.446
+    ticker = '510500.SH'
+    limit_price = 4.63
     quantity = 100
     action = trade_pb2.OrderAction.Value('SELL')
     type_ = trade_pb2.OrderType.Value('LIMIT')
 
     order_id = insert_limit_order(host, req_port, resp_port,
                                   ticker, limit_price, quantity,
-                                  action, type_, 700)
+                                  action, type_, 5)
 
 
-    # # 撤单
-    # print(10*'*', 'cancel order', 10*'*')
-    # time.sleep(3)
-    # cancel_order(host, req_port, resp_port, order_id, 3)
-    #
+    # 撤单
+    print(10*'*', 'cancel order', 10*'*')
+    time.sleep(3)
+    cancel_order(host, req_port, resp_port, order_id, 3)
+
     # # 查询
     # print(10*'*', 'query position', 10*'*')
     # req = trade_pb2.ReqMessage()
     # req.head = trade_pb2.ReqMessage.Head.Value('QUERY_POSITION')
     # resp = sendQryAndWaitForReply(host, req_port, resp_port, req, 5)
     # print(resp)
-
 
 
 if __name__ == '__main__':
