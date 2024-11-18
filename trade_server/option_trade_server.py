@@ -17,7 +17,6 @@ from xtrade_essential.utils import errors as trade_errors
 
 from common.tradeHandler.async_server import AsyncBaseTradeServer, LimitOrder, EtfConvertRequest
 from common.tradeHandler.data_models import AccountBalance, AccountHolding
-from .utils import OPTION_TRAITS, STOCK_TRAITS, parseDatetimeStr
 from .stock_trade_server import TraderServer as StockTraderServer
 
 
@@ -36,6 +35,9 @@ class TraderServer(StockTraderServer):
         StockTraderServer.__init__(self, hostname)
 
     async def handleAccountAndPositionResp(self, msg_dict: dict):
+        if "asset" not in msg_dict:
+            return
+
         asset_data = msg_dict['asset']
 
         # 更新资金
@@ -45,12 +47,13 @@ class TraderServer(StockTraderServer):
         asset_df['S3'] = asset_df['S3'].astype(float)
         asset_df['S4'] = asset_df['S4'].astype(float)
         asset_df['S5'] = asset_df['S5'].astype(str)
+        asset_df['S6'] = asset_df['S6'].astype(float)
         asset_df['S8'] = asset_df['S8'].replace('', 0.0).astype(float)
 
         bal = AccountBalance(
             balance=asset_df['S3'].sum(),
-            cash_balance=asset_df.iloc[0]['S3'],
-            cash_available=asset_df.iloc[0]['S4'],
+            cash_balance=asset_df.iloc[0]['S6'],
+            cash_available=asset_df.iloc[0]['S6'],
             margin=0,
             unrealized_pnl=0,
             realized_pnl=0,
