@@ -22,6 +22,7 @@ class CreditTraderServer(TraderServer):
 
         # 更新资金
         fund_df = pd.DataFrame(msg_dict['fund'])
+        self.getLogger().info(fund_df.iloc[0].to_dict())
         bal = AccountBalance(
             balance=float(fund_df['NETASSET'].iloc[0]),
             cash_balance=float(fund_df['CASHASSET'].iloc[0]),
@@ -30,6 +31,7 @@ class CreditTraderServer(TraderServer):
             unrealized_pnl=0,
             realized_pnl=0,
             cash_borrowable=float(fund_df['RZENABLEQT'].iloc[0]),
+            cash_available_forriskasset=float(fund_df['CASHASSET'].iloc[0]),
         )
         self.updateAccountBalance({'CNY': bal})
 
